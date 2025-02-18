@@ -1,0 +1,14 @@
+@keyframes bump {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+.bump-effect {
+  display: inline-block;
+  animation: bump 0.9s infinite;
+}

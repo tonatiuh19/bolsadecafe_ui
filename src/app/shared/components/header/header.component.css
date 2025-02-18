@@ -1,0 +1,33 @@
+.navbar {
+  background-color: transparent;
+  color: black;
+  transition: background-color 0.3s ease;
+}
+
+.navbar.scrolled {
+  background-color: black !important;
+  color: white;
+}
+
+.additional-content {
+  /* Add your styles here */
+  margin-left: 5px; /* Example: Add some space between the logo and the new div */
+  display: inline-block; /* Ensure it stays next to the logo */
+  vertical-align: middle; /* Align it vertically with the logo */
+}
+
+.logo {
+  height: 30px;
+}
+
+/* Mobile styles */
+@media (max-width: 767px) {
+  .logo {
+    height: 20px; /* Adjust the height for mobile */
+    /*content: url("https://garbrix.com/regalame/assets/images/icon.png"); /* Change the image for mobile */
+  }
+}
+
+.hidden-button-username-modal {
+  display: none;
+}
