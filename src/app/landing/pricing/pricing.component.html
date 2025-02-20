@@ -1,0 +1,43 @@
+<div
+  *ngIf="!isSuscribtionPage"
+  class="container d-flex justify-content-center align-items-center vh-100"
+>
+  <div class="row">
+    <div class="col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <h5 class="card-title">Basic Plan</h5>
+          <p class="card-text">$10/month</p>
+          <button class="btn btn-primary" (click)="goToSuscribtionPage()">
+            Select
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <h5 class="card-title">Standard Plan</h5>
+          <p class="card-text">$20/month</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <h5 class="card-title">Premium Plan</h5>
+          <p class="card-text">$30/month</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <h5 class="card-title">Ultimate Plan</h5>
+          <p class="card-text">$40/month</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<app-coffee-wizard *ngIf="isSuscribtionPage"></app-coffee-wizard>

@@ -1,0 +1,229 @@
+<section
+  class="d-flex justify-content-center align-items-center main-container"
+>
+  <div class="card flex justify-center card-width card-height p-5">
+    <p-stepper [(value)]="activeIndex" class="basis-[50rem]">
+      <p-step-list>
+        <p-step [value]="0" [disabled]="!isStepValid(0)"
+          >¿Cómo te gustaría tu café?</p-step
+        >
+        <p-step [value]="1" [disabled]="!isStepValid(1)"
+          >¿Dónde entregamos tu café?</p-step
+        >
+        <p-step [value]="2" [disabled]="!isStepValid(2)"
+          >¿Quién recibirá tu café?</p-step
+        >
+        <p-step [value]="3" [disabled]="!isStepValid(3)">Tu pago</p-step>
+      </p-step-list>
+      <p-step-panels>
+        <p-step-panel [value]="0">
+          <ng-template #content let-activateCallback="activateCallback">
+            <div class="flex flex-col h-100 justify-center text-center">
+              <h3 class="py-3 mb-5">¿Cuál es tu nivel de molido preferido?</h3>
+              <div class="cont-main">
+                <div
+                  class="cont-checkbox"
+                  *ngFor="let option of roastOptions; index as i"
+                >
+                  <input
+                    type="radio"
+                    name="roast"
+                    [id]="'roast-' + i"
+                    [value]="option.value"
+                    (change)="selectRoast(option.value)"
+                    [checked]="selectedRoast === option.value"
+                  />
+                  <label [for]="'roast-' + i">
+                    <img [src]="option.image_radio" [alt]="option.value" />
+                    <span class="cover-checkbox">
+                      <svg viewBox="0 0 12 10">
+                        <polyline points="1.5 6 4.5 9 10.5 1"></polyline>
+                      </svg>
+                    </span>
+                    <div class="info">{{ option.value }}</div>
+                  </label>
+                </div>
+              </div>
+              <div *ngIf="!selectedRoast && submitted" class="text-danger">
+                Por favor selecciona un nivel de tueste.
+              </div>
+              <div class="flex pt-6 justify-end mt-3">
+                <p-button
+                  label="Siguiente"
+                  icon="pi pi-arrow-right"
+                  iconPos="right"
+                  (onClick)="nextStep(activateCallback, 1)"
+                  [disabled]="!selectedRoast"
+                ></p-button>
+              </div>
+            </div>
+          </ng-template>
+        </p-step-panel>
+
+        <p-step-panel [value]="1">
+          <ng-template #content let-activateCallback="activateCallback">
+            <div class="flex flex-col h-100 justify-center">
+              <h3>¿Dónde se entregará el café?</h3>
+              <form [formGroup]="addressForm">
+                <div class="form-group">
+                  <label for="address">Dirección</label>
+                  <input
+                    type="text"
+                    id="address"
+                    class="form-control"
+                    formControlName="address"
+                  />
+                  <div
+                    *ngIf="addressForm.get('address')?.invalid && submitted"
+                    class="text-danger"
+                  >
+                    Dirección es requerida.
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="city">Ciudad</label>
+                  <input
+                    type="text"
+                    id="city"
+                    class="form-control"
+                    formControlName="city"
+                  />
+                  <div
+                    *ngIf="addressForm.get('city')?.invalid && submitted"
+                    class="text-danger"
+                  >
+                    Ciudad es requerida.
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="state">Estado</label>
+                  <input
+                    type="text"
+                    id="state"
+                    class="form-control"
+                    formControlName="state"
+                  />
+                  <div
+                    *ngIf="addressForm.get('state')?.invalid && submitted"
+                    class="text-danger"
+                  >
+                    Estado es requerido.
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="zip">Código Postal</label>
+                  <input
+                    type="text"
+                    id="zip"
+                    class="form-control"
+                    formControlName="zip"
+                  />
+                  <div
+                    *ngIf="addressForm.get('zip')?.invalid && submitted"
+                    class="text-danger"
+                  >
+                    Código Postal es requerido.
+                  </div>
+                </div>
+              </form>
+              <div class="flex pt-6 justify-between">
+                <p-button
+                  label="Atrás"
+                  severity="secondary"
+                  icon="pi pi-arrow-left"
+                  (onClick)="prevStep(activateCallback, 0)"
+                ></p-button>
+                <p-button
+                  label="Siguiente"
+                  icon="pi pi-arrow-right"
+                  iconPos="right"
+                  (onClick)="nextStep(activateCallback, 2)"
+                  [disabled]="addressForm.invalid"
+                ></p-button>
+              </div>
+            </div>
+          </ng-template>
+        </p-step-panel>
+
+        <p-step-panel [value]="2">
+          <ng-template #content let-activateCallback="activateCallback">
+            <div class="flex flex-col h-100 justify-center">
+              <h3>¿Quién recibirá el café?</h3>
+              <form [formGroup]="recipientForm">
+                <div class="form-group">
+                  <label for="name">Nombre</label>
+                  <input
+                    type="text"
+                    id="name"
+                    class="form-control"
+                    formControlName="name"
+                  />
+                  <div
+                    *ngIf="recipientForm.get('name')?.invalid && submitted"
+                    class="text-danger"
+                  >
+                    Nombre es requerido.
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="phone">Teléfono</label>
+                  <input
+                    type="text"
+                    id="phone"
+                    class="form-control"
+                    formControlName="phone"
+                  />
+                  <div
+                    *ngIf="recipientForm.get('phone')?.invalid && submitted"
+                    class="text-danger"
+                  >
+                    Teléfono es requerido.
+                  </div>
+                </div>
+              </form>
+              <div class="flex pt-6 justify-between">
+                <p-button
+                  label="Atrás"
+                  severity="secondary"
+                  icon="pi pi-arrow-left"
+                  (onClick)="prevStep(activateCallback, 1)"
+                ></p-button>
+                <p-button
+                  label="Siguiente"
+                  icon="pi pi-arrow-right"
+                  iconPos="right"
+                  (onClick)="nextStep(activateCallback, 3)"
+                  [disabled]="recipientForm.invalid"
+                ></p-button>
+              </div>
+            </div>
+          </ng-template>
+        </p-step-panel>
+
+        <p-step-panel [value]="3">
+          <ng-template #content let-activateCallback="activateCallback">
+            <div class="flex flex-col h-100 justify-center">
+              <h3>Revisar y Pagar</h3>
+              <p>Revisa tu pedido y procede al pago.</p>
+              <!-- Add checkout details and payment form here -->
+              <div class="flex pt-6 justify-start">
+                <p-button
+                  label="Atrás"
+                  icon="pi pi-arrow-left"
+                  iconPos="right"
+                  (onClick)="prevStep(activateCallback, 2)"
+                ></p-button>
+                <p-button
+                  label="Pagar"
+                  icon="pi pi-check"
+                  iconPos="right"
+                  (onClick)="onSubmit()"
+                ></p-button>
+              </div>
+            </div>
+          </ng-template>
+        </p-step-panel>
+      </p-step-panels>
+    </p-stepper>
+  </div>
+</section>
