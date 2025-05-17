@@ -1,5 +1,9 @@
-import { Component } from '@angular/core';
+import { Component, HostListener, Renderer2 } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import {
+  faLongArrowAltLeft,
+  faLongArrowAltRight,
+} from '@fortawesome/free-solid-svg-icons';
 
 @Component({
   selector: 'app-coffee-wizard',
@@ -8,49 +12,83 @@ import { FormBuilder, FormGroup, Validators } from '@angular/forms';
   standalone: false,
 })
 export class CoffeeWizardComponent {
-  selectedRoast: string = '';
+  // Default selected by id
+  selectedRoast: number = 1;
   addressForm: FormGroup;
   recipientForm: FormGroup;
   submitted: boolean = false;
   activeIndex: number = 0;
+  isMobile: boolean = false;
+
+  // FontAwesome icons
+  faLongArrowAltLeft = faLongArrowAltLeft;
+  faLongArrowAltRight = faLongArrowAltRight;
 
   roastOptions = [
     {
       id_product_f_cuerpo_types: 1,
       value: 'Grano completo',
+      subtitle: 'Perfecto para cafeteras de filtro',
       image_radio:
         'https://garbrix.com/bolsadecafe/assets/images/coffee-machine-svgrepo-com.svg',
     },
     {
       id_product_f_cuerpo_types: 2,
       value: 'Molido Medio',
+      subtitle: 'Perfecto para cafeteras de filtro',
       image_radio:
         'https://garbrix.com/bolsadecafe/assets/images/coffee-machine-svgrepo-com.svg',
     },
     {
       id_product_f_cuerpo_types: 3,
       value: 'Molido Extra Fino',
+      subtitle: 'Perfecto para cafeteras de filtro',
       image_radio:
         'https://garbrix.com/bolsadecafe/assets/images/coffee-machine-svgrepo-com.svg',
     },
   ];
 
-  constructor(private fb: FormBuilder) {
+  constructor(private fb: FormBuilder, private renderer: Renderer2) {
     this.addressForm = this.fb.group({
       address: ['', Validators.required],
+      extNumber: ['', Validators.required],
+      intNumber: [''],
       city: ['', Validators.required],
       state: ['', Validators.required],
       zip: ['', Validators.required],
     });
+    // ...existing code...
 
     this.recipientForm = this.fb.group({
       name: ['', Validators.required],
       phone: ['', Validators.required],
     });
+
+    this.checkIfMobile();
   }
 
-  selectRoast(roast: string) {
-    this.selectedRoast = roast;
+  @HostListener('window:resize', ['$event'])
+  onResize(event: any) {
+    this.checkIfMobile();
+  }
+
+  checkIfMobile() {
+    this.isMobile = window.innerWidth <= 768;
+    if (this.isMobile) {
+      this.renderer.addClass(document.body, 'mobile');
+    } else {
+      this.renderer.removeClass(document.body, 'mobile');
+    }
+  }
+
+  selectRoast(roastId: number) {
+    this.selectedRoast = roastId;
+  }
+
+  get selectedRoastOption() {
+    return this.roastOptions.find(
+      (o) => o.id_product_f_cuerpo_types === this.selectedRoast
+    );
   }
 
   nextStep(activateCallback: (index: number) => void, index: number) {
@@ -105,6 +143,10 @@ export class CoffeeWizardComponent {
       return;
     }
 
-    // Proceed to submit the form
+    console.log({
+      roast: this.selectedRoastOption,
+      address: this.addressForm.value,
+      recipient: this.recipientForm.value,
+    });
   }
 }

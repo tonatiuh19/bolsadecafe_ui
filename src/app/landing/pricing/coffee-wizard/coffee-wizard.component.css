@@ -1,45 +1,13 @@
 .main-container {
   position: relative;
   background-size: cover;
-  background-attachment: fixed; /* Fixed background image */
+  background-attachment: fixed;
   height: 100vh;
   overflow: hidden;
 }
 
 .card-width {
   width: 80% !important;
-}
-
-.card-height {
-  height: 80% !important;
-}
-
-.step-content {
-  text-align: center;
-}
-
-.roast-levels {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-}
-
-.roast-option {
-  cursor: pointer;
-  border: 2px solid transparent;
-  border-radius: 10px;
-  padding: 10px;
-  transition: border-color 0.3s;
-}
-
-.roast-option img {
-  width: 100px;
-  height: 100px;
-  border-radius: 10px;
-}
-
-.roast-option.selected {
-  border-color: #007bff;
 }
 
 .text-danger {
@@ -56,7 +24,9 @@
 
 .cont-checkbox {
   width: 150px;
-  height: 100px;
+  height: 200px;
+  padding: 10px;
+  margin: 10px;
   border-radius: var(--border-radius);
   box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
   transition: transform var(--transition);
@@ -79,7 +49,7 @@
         }
       }
       img {
-        -webkit-filter: none; /* Safari 6.0 - 9.0 */
+        -webkit-filter: none;
         filter: none;
       }
     }
@@ -97,7 +67,7 @@
       height: 70%;
       object-fit: cover;
       clip-path: polygon(0% 0%, 100% 0, 100% 81%, 50% 100%, 0 81%);
-      -webkit-filter: grayscale(100%); /* Safari 6.0 - 9.0 */
+      -webkit-filter: grayscale(100%);
       filter: grayscale(100%);
     }
     .cover-checkbox {
@@ -119,5 +89,31 @@
       font-weight: 600;
       font-size: 0.8rem;
     }
+
+    .subtitle {
+      font-size: 0.85em;
+      color: #888;
+      margin-top: 0.2em;
+    }
   }
+}
+
+:host ::ng-deep p-step-panels {
+  height: 100% !important;
+}
+
+@media (max-width: 768px) {
+  :host ::ng-deep p-step {
+    padding: 0 !important;
+  }
+}
+
+.form-control {
+  height: 3rem; /* Adjust as needed */
+  font-size: 1.1rem; /* Optional: make text a bit larger */
+}
+
+.form-select {
+  height: 3rem;
+  font-size: 1.1rem;
 }
