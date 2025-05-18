@@ -1,4 +1,4 @@
-import { Component, Renderer2 } from '@angular/core';
+import { Component, Input, Renderer2 } from '@angular/core';
 import { Router } from '@angular/router';
 import { faHeart } from '@fortawesome/free-solid-svg-icons';
 
@@ -9,6 +9,7 @@ import { faHeart } from '@fortawesome/free-solid-svg-icons';
   standalone: false,
 })
 export class FooterComponent {
+  @Input() isMain = false;
   faHeart = faHeart;
 
   constructor(private router: Router, private renderer: Renderer2) {}

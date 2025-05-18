@@ -2,6 +2,21 @@
   class="d-flex justify-content-center align-items-center main-container"
 >
   <div class="card d-flex justify-content-center card-width card-height p-5">
+    <div class="container">
+      <div class="row">
+        <div class="col-sm-12 text-center">
+          <ng-container *ngIf="subsType >= 1 && subsType <= 3">
+            <h2 class="display-huge mb-2">
+              {{ planInfo[subsType - 1].label }}
+            </h2>
+            <h3 class="mb-5 fw-light">
+              ${{ planInfo[subsType - 1].price }}
+              <span style="font-size: 1.2rem; font-weight: 400">/mes</span>
+            </h3>
+          </ng-container>
+        </div>
+      </div>
+    </div>
     <p-stepper [(value)]="activeIndex" class="h-100">
       <p-step-list>
         <p-step [value]="0" [disabled]="!isStepValid(0)">
@@ -62,7 +77,19 @@
               <div class="d-flex justify-content-end w-100 pt-6 mt-3">
                 <button
                   type="button"
-                  class="btn btn-success"
+                  class="btn btn-light me-1"
+                  (click)="cancelStep()"
+                >
+                  <ng-container *ngIf="isMobile; else atrasText1">
+                    <fa-icon [icon]="faTimes"></fa-icon>
+                  </ng-container>
+                  <ng-template #atrasText1>
+                    <fa-icon [icon]="faTimes"></fa-icon> Cancelar
+                  </ng-template>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
                   (click)="nextStep(activateCallback, 1)"
                   [disabled]="!selectedRoast"
                 >
@@ -240,7 +267,7 @@
                 </button>
                 <button
                   type="button"
-                  class="btn btn-success"
+                  class="btn btn-primary"
                   (click)="nextStep(activateCallback, 2)"
                   [disabled]="addressForm.invalid"
                 >
@@ -316,7 +343,7 @@
                 </button>
                 <button
                   type="button"
-                  class="btn btn-success"
+                  class="btn btn-primary"
                   (click)="nextStep(activateCallback, 3)"
                   [disabled]="recipientForm.invalid"
                 >
@@ -355,7 +382,7 @@
                 </button>
                 <button
                   type="button"
-                  class="btn btn-success"
+                  class="btn btn-primary"
                   (click)="onSubmit()"
                 >
                   <ng-container *ngIf="isMobile; else pagarText">

@@ -1,15 +1,40 @@
-.card {
-  margin: 10px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+.main-container {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
 }
 
-.card-body {
+.plan-card {
+  border: 2px solid #e0e0e0;
+  border-radius: 18px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.18);
+  transition: box-shadow 0.2s;
+  background: #fff;
+  min-height: 480px;
+}
+
+.plan-card .card-body {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
   height: 100%;
+}
+
+.plan-card:hover {
+  box-shadow: 0 8px 24px rgba(44, 62, 80, 0.16);
+}
+
+.plan-card hr {
+  margin: 1.2rem 0;
+}
+
+@media (max-width: 767.98px) {
+  .plan-card {
+    margin-bottom: 1.5rem;
+  }
+}
+
+.display-huge {
+  font-weight: 900 !important;
+  color: #1c3d88;
 }

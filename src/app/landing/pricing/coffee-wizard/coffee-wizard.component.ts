@@ -1,8 +1,16 @@
-import { Component, HostListener, Renderer2 } from '@angular/core';
+import {
+  Component,
+  EventEmitter,
+  HostListener,
+  Input,
+  Output,
+  Renderer2,
+} from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import {
   faLongArrowAltLeft,
   faLongArrowAltRight,
+  faTimes,
 } from '@fortawesome/free-solid-svg-icons';
 
 @Component({
@@ -12,6 +20,14 @@ import {
   standalone: false,
 })
 export class CoffeeWizardComponent {
+  @Input() subsType = 0;
+  @Output() cancelWizard = new EventEmitter<void>();
+
+  planInfo = [
+    { label: '250gr de café', price: 199 },
+    { label: '500gr de café', price: 299 },
+    { label: '1kg de café', price: 399 },
+  ];
   // Default selected by id
   selectedRoast: number = 1;
   addressForm: FormGroup;
@@ -23,6 +39,7 @@ export class CoffeeWizardComponent {
   // FontAwesome icons
   faLongArrowAltLeft = faLongArrowAltLeft;
   faLongArrowAltRight = faLongArrowAltRight;
+  faTimes = faTimes;
 
   roastOptions = [
     {
@@ -114,6 +131,15 @@ export class CoffeeWizardComponent {
   prevStep(activateCallback: (index: number) => void, index: number) {
     this.activeIndex = index;
     activateCallback(index);
+  }
+
+  cancelStep() {
+    this.cancelWizard.emit(); // Notify parent
+    this.activeIndex = 0;
+    this.selectedRoast = 1;
+    this.addressForm.reset();
+    this.recipientForm.reset();
+    this.submitted = false;
   }
 
   isStepValid(step: number): boolean {

@@ -1,4 +1,10 @@
-<footer class="bg-dark text-white p-1 z-3">
+<footer
+  class="p-1 z-3"
+  [ngClass]="{
+    'bg-primary text-white': !isMain,
+    'bg-white text-dark': isMain
+  }"
+>
   <div class="container-fluid p-3">
     <div class="row">
       <div class="col-sm-6"></div>
@@ -6,7 +12,8 @@
         <div class="row">
           <div class="col-sm-12">
             <a
-              class="btn btn-link text-white"
+              class="btn m-1"
+              [ngClass]="isMain ? 'btn-outline-primary' : 'btn-light'"
               target="_blank"
               (click)="goToTermsAndConditions()"
             >
@@ -15,7 +22,8 @@
           </div>
           <div class="col-sm-12">
             <a
-              class="btn btn-link text-white"
+              class="btn m-1"
+              [ngClass]="isMain ? 'btn-outline-primary' : 'btn-light'"
               target="_blank"
               (click)="goToPrivacyTerms()"
             >
@@ -24,7 +32,8 @@
           </div>
           <div class="col-sm-12">
             <a
-              class="btn btn-link text-white"
+              class="btn m-1"
+              [ngClass]="isMain ? 'btn-outline-primary' : 'btn-light'"
               target="_blank"
               (click)="goToNeedHelp()"
             >

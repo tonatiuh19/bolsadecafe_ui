@@ -17,17 +17,32 @@
 }
 
 .logo {
-  height: 30px;
+  height: 50px;
 }
 
-/* Mobile styles */
 @media (max-width: 767px) {
   .logo {
-    height: 20px; /* Adjust the height for mobile */
-    /*content: url("https://garbrix.com/regalame/assets/images/icon.png"); /* Change the image for mobile */
+    height: 20px;
   }
 }
 
 .hidden-button-username-modal {
   display: none;
+}
+
+.custom-header-btn-title {
+  background: #ffffff !important; /* Example dark blue, change as needed */
+  border: 2px solid #fff !important;
+  color: #1c3d88 !important;
+  font-size: 1.25rem !important; /* Larger font */
+}
+.custom-header-btn-title:hover,
+.custom-header-btn-title:focus {
+  background: #1c3d88 !important; /* Slightly darker on hover */
+  color: #ffffff !important;
+}
+
+.custom-header-icon {
+  font-size: 2rem !important; /* Bigger icon */
+  vertical-align: middle;
 }

@@ -117,3 +117,20 @@
   height: 3rem;
   font-size: 1.1rem;
 }
+
+.display-huge {
+  font-weight: 900 !important;
+  color: #1c3d88;
+}
+
+::ng-deep .p-step-title {
+  color: #1c3d88 !important;
+}
+
+::ng-deep .p-step-number {
+  color: #1c3d88 !important;
+}
+
+::ng-deep .p-stepper-separator {
+  background-color: #1c3d88 !important;
+}

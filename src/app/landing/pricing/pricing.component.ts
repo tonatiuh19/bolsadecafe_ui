@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { faCheck } from '@fortawesome/free-solid-svg-icons';
 
 @Component({
   selector: 'app-pricing',
@@ -8,8 +9,12 @@ import { Component } from '@angular/core';
 })
 export class PricingComponent {
   isSuscribtionPage = false;
+  subsType = 0;
 
-  goToSuscribtionPage() {
+  faCheck = faCheck;
+
+  goToSuscribtionPage(type: number) {
+    this.subsType = type;
     this.isSuscribtionPage = true;
   }
 }
