@@ -1,8 +1,11 @@
 import {
+  AfterViewChecked,
   Component,
   EventEmitter,
   HostListener,
   Input,
+  OnDestroy,
+  OnInit,
   Output,
   Renderer2,
 } from '@angular/core';
@@ -19,7 +22,9 @@ import {
   styleUrls: ['./coffee-wizard.component.css'],
   standalone: false,
 })
-export class CoffeeWizardComponent {
+export class CoffeeWizardComponent
+  implements OnInit, OnDestroy, AfterViewChecked
+{
   @Input() subsType = 0;
   @Output() cancelWizard = new EventEmitter<void>();
 
@@ -65,6 +70,8 @@ export class CoffeeWizardComponent {
     },
   ];
 
+  private firstRender = true;
+
   constructor(private fb: FormBuilder, private renderer: Renderer2) {
     this.addressForm = this.fb.group({
       address: ['', Validators.required],
@@ -74,7 +81,6 @@ export class CoffeeWizardComponent {
       state: ['', Validators.required],
       zip: ['', Validators.required],
     });
-    // ...existing code...
 
     this.recipientForm = this.fb.group({
       name: ['', Validators.required],
@@ -82,6 +88,23 @@ export class CoffeeWizardComponent {
     });
 
     this.checkIfMobile();
+  }
+
+  ngOnInit() {
+    this.applyBodyStyles();
+  }
+
+  ngOnDestroy() {
+    this.removeBodyStyles();
+  }
+
+  ngAfterViewChecked() {
+    if (this.firstRender) {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      this.firstRender = false;
+    }
+
+    this.applyBodyStyles();
   }
 
   @HostListener('window:resize', ['$event'])
@@ -126,6 +149,8 @@ export class CoffeeWizardComponent {
     this.activeIndex = index;
     this.submitted = false;
     activateCallback(index);
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   prevStep(activateCallback: (index: number) => void, index: number) {
@@ -140,6 +165,7 @@ export class CoffeeWizardComponent {
     this.addressForm.reset();
     this.recipientForm.reset();
     this.submitted = false;
+    this.firstRender = true;
   }
 
   isStepValid(step: number): boolean {
@@ -174,5 +200,15 @@ export class CoffeeWizardComponent {
       address: this.addressForm.value,
       recipient: this.recipientForm.value,
     });
+  }
+
+  private applyBodyStyles() {
+    this.renderer.setStyle(document.body, 'overflow-x', 'hidden');
+    this.renderer.setStyle(document.body, 'max-width', '100vw');
+  }
+
+  private removeBodyStyles() {
+    this.renderer.removeStyle(document.body, 'overflow-x');
+    this.renderer.removeStyle(document.body, 'max-width');
   }
 }

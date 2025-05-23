@@ -33,79 +33,72 @@
   background: white;
   margin-bottom: 0.75rem;
   margin-right: 0.75rem;
-  &:active {
-    transform: scale(0.9);
-  }
-  input {
-    display: none;
-    &:checked + label {
-      opacity: 1;
-      box-shadow: 0 0 0 3px var(--background);
-      .cover-checkbox {
-        opacity: 1;
-        transform: scale(1);
-        svg {
-          stroke-dashoffset: 0;
-        }
-      }
-      img {
-        -webkit-filter: none;
-        filter: none;
-      }
-    }
-  }
-  label {
-    cursor: pointer;
-    border-radius: var(--border-radius);
-    overflow: hidden;
-    width: 100%;
-    height: 100%;
-    position: relative;
-    opacity: 0.6;
-    img {
-      width: 100%;
-      height: 70%;
-      object-fit: cover;
-      clip-path: polygon(0% 0%, 100% 0, 100% 81%, 50% 100%, 0 81%);
-      -webkit-filter: grayscale(100%);
-      filter: grayscale(100%);
-    }
-    .cover-checkbox {
-      position: absolute;
-      right: 5px;
-      top: 3px;
-      z-index: 1;
-      width: 23px;
-      height: 23px;
-      background: var(--box-shadow);
-      transition: transform var(--transition),
-        opacity calc(var(--transition) * 1.2) linear;
-      opacity: 0;
-      transform: scale(0);
-    }
-    .info {
-      text-align: center;
-      margin-top: 0.2rem;
-      font-weight: 600;
-      font-size: 0.8rem;
-    }
-
-    .subtitle {
-      font-size: 0.85em;
-      color: #888;
-      margin-top: 0.2em;
-    }
-  }
+}
+.cont-checkbox:active {
+  transform: scale(0.9);
+}
+.cont-checkbox input {
+  display: none;
+}
+.cont-checkbox input:checked + label {
+  opacity: 1;
+  box-shadow: 0 0 0 3px var(--background);
+}
+.cont-checkbox input:checked + label .cover-checkbox {
+  opacity: 1;
+  transform: scale(1);
+}
+.cont-checkbox input:checked + label .cover-checkbox svg {
+  stroke-dashoffset: 0;
+}
+.cont-checkbox input:checked + label img {
+  -webkit-filter: none;
+  filter: none;
+}
+.cont-checkbox label {
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  opacity: 0.6;
+}
+.cont-checkbox label img {
+  width: 100%;
+  height: 70%;
+  object-fit: cover;
+  clip-path: polygon(0% 0%, 100% 0, 100% 81%, 50% 100%, 0 81%);
+  -webkit-filter: grayscale(100%);
+  filter: grayscale(100%);
+}
+.cont-checkbox label .cover-checkbox {
+  position: absolute;
+  right: 5px;
+  top: 3px;
+  z-index: 1;
+  width: 23px;
+  height: 23px;
+  background: var(--box-shadow);
+  transition: transform var(--transition),
+    opacity calc(var(--transition) * 1.2) linear;
+  opacity: 0;
+  transform: scale(0);
+}
+.cont-checkbox label .info {
+  text-align: center;
+  margin-top: 0.2rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+.cont-checkbox label .subtitle {
+  font-size: 0.85em;
+  color: #888;
+  margin-top: 0.2em;
 }
 
 :host ::ng-deep p-step-panels {
   height: 100% !important;
-}
-
-@media (max-width: 768px) {
-  :host ::ng-deep p-step {
-    padding: 0 !important;
-  }
 }
 
 .form-control {
@@ -133,4 +126,107 @@
 
 ::ng-deep .p-stepper-separator {
   background-color: #1c3d88 !important;
+}
+
+/* Responsive styles for mobile */
+@media (max-width: 768px) {
+  .card {
+    border: none !important;
+    box-shadow: 0 2px 12px rgba(44, 62, 80, 0.1) !important;
+  }
+
+  .card-width {
+    width: 100% !important;
+    padding: 0 !important;
+  }
+  .card-height {
+    min-height: unset !important;
+  }
+  .main-container {
+    padding: 100 !important;
+    margin: 1rem !important;
+    height: auto !important;
+    min-height: 100vh !important;
+  }
+  .container {
+    padding: 0 !important;
+  }
+  .cont-main {
+    flex-direction: column !important;
+    align-items: center !important;
+  }
+  .cont-checkbox {
+    width: 90vw !important;
+    max-width: 350px !important;
+    margin: 0.5rem auto !important;
+    height: auto !important;
+    min-height: 120px !important;
+  }
+  .display-huge {
+    font-size: 1.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+  h3.mb-5.fw-light {
+    font-size: 1.1rem !important;
+    margin-bottom: 1rem !important;
+  }
+  /* Step list horizontal scroll */
+  ::ng-deep p-step-list {
+    display: flex !important;
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    padding-bottom: 0.5rem !important;
+    margin-bottom: 1rem !important;
+  }
+  ::ng-deep p-step {
+    min-width: 160px !important;
+    font-size: 0.95rem !important;
+    padding: 0.5rem 0.7rem !important;
+    margin: 0 0.2rem !important;
+    white-space: nowrap !important;
+  }
+  ::ng-deep .p-step-title {
+    font-size: 0.9rem !important;
+    white-space: nowrap !important;
+  }
+  .wizard-btn-group {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  .wizard-btn-group .btn {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  /* Fix radio icon size */
+  .cont-checkbox label img {
+    height: 90px !important;
+    max-height: 90px !important;
+    min-height: 60px !important;
+    width: auto !important;
+    object-fit: contain !important;
+    margin: 0 auto !important;
+    display: block !important;
+  }
+
+  /* Make step list fixed at the top of the card */
+  ::ng-deep p-step-list {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 10 !important;
+    background: #fff !important;
+    border-radius: 0 0 12px 12px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+  }
+
+  /* Fix titles to top of card, below step list */
+  .display-huge,
+  h3.mb-5.fw-light {
+    top: 48px !important; /* Adjust if your stepper is taller */
+    z-index: 9 !important;
+    background: #fff !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+    margin-bottom: 0 !important;
+  }
 }
