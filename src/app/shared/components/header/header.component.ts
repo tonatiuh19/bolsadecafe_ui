@@ -3,6 +3,9 @@ import { Router } from '@angular/router';
 import { faUserCircle, faNewspaper } from '@fortawesome/free-solid-svg-icons';
 import { Subject, takeUntil } from 'rxjs';
 import { Title } from '@angular/platform-browser';
+import { AuthService } from '@auth0/auth0-angular';
+import { Store } from '@ngrx/store';
+import { fromLanding } from '../../store/selectors';
 
 @Component({
   selector: 'app-header',
@@ -14,6 +17,10 @@ export class HeaderComponent implements OnInit {
   @Input() isMain = true;
   @Input() isNeutral = false;
 
+  public selectLandingState$ = this.store.select(
+    fromLanding.selectLandingState
+  );
+
   faUserCircle = faUserCircle;
   faNewspaper = faNewspaper;
 
@@ -23,10 +30,20 @@ export class HeaderComponent implements OnInit {
 
   private unsubscribe$ = new Subject<void>();
 
-  constructor(private router: Router, private titleService: Title) {}
+  constructor(
+    private store: Store,
+    private router: Router,
+    private titleService: Title,
+    public auth: AuthService
+  ) {}
 
   ngOnInit(): void {
     this.isLogged = false;
+    this.selectLandingState$
+      .pipe(takeUntil(this.unsubscribe$))
+      .subscribe((state) => {
+        console.log('state', state);
+      });
   }
 
   ngOnDestroy(): void {

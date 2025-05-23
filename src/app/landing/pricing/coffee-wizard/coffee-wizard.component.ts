@@ -156,6 +156,8 @@ export class CoffeeWizardComponent
   prevStep(activateCallback: (index: number) => void, index: number) {
     this.activeIndex = index;
     activateCallback(index);
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   cancelStep() {

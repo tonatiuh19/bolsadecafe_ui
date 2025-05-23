@@ -8,6 +8,10 @@ import { provideHttpClient } from '@angular/common/http';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { providePrimeNG } from 'primeng/config';
+import { StoreModule as NgrxStoreModule } from '@ngrx/store';
+import { StoreDevtoolsModule } from '@ngrx/store-devtools';
+import { EffectsModule } from '@ngrx/effects';
+import { StoreRouterConnectingModule, routerReducer } from '@ngrx/router-store';
 import Aura from '@primeng/themes/aura';
 
 @NgModule({
@@ -17,6 +21,14 @@ import Aura from '@primeng/themes/aura';
     AppRoutingModule,
     LandingModule,
     BrowserAnimationsModule,
+    EffectsModule.forRoot([]),
+    NgrxStoreModule.forRoot({
+      routerReducer: routerReducer,
+    }),
+    StoreRouterConnectingModule.forRoot(),
+    StoreDevtoolsModule.instrument({
+      maxAge: 25,
+    }),
   ],
   providers: [
     provideHttpClient(),
