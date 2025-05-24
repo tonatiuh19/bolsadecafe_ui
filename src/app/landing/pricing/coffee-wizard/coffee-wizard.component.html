@@ -268,7 +268,7 @@
             >
               <h3>¿Quién recibirá el café?</h3>
               <form [formGroup]="recipientForm" class="w-100">
-                <div class="form-group">
+                <div *ngIf="user.isLoggedIn" class="form-group">
                   <label for="name"
                     >Nombre <span class="text-danger">*</span></label
                   >
@@ -285,7 +285,7 @@
                     Nombre es requerido.
                   </div>
                 </div>
-                <div class="form-group">
+                <div *ngIf="user.isLoggedIn" class="form-group">
                   <label for="phone"
                     >Teléfono <span class="text-danger">*</span></label
                   >
@@ -299,7 +299,31 @@
                     *ngIf="recipientForm.get('phone')?.invalid && submitted"
                     class="text-danger"
                   >
-                    Teléfono es requerido.
+                    <ng-container
+                      *ngIf="recipientForm.get('phone')?.errors?.['required']"
+                    >
+                      Teléfono es requerido.
+                    </ng-container>
+                    <ng-container
+                      *ngIf="recipientForm.get('phone')?.errors?.['pattern']"
+                    >
+                      El teléfono debe tener exactamente 10 dígitos numéricos.
+                    </ng-container>
+                  </div>
+                </div>
+
+                <div *ngIf="!user.isLoggedIn" class="container my-5">
+                  <div class="row text-center">
+                    <div class="col-sm-12">
+                      <button
+                        type="button"
+                        class="btn btn-light btn-lg me-1"
+                        (click)="login()"
+                      >
+                        <fa-icon [icon]="faUserCircle"></fa-icon> Iniciar sesión
+                        / Crear cuenta
+                      </button>
+                    </div>
                   </div>
                 </div>
               </form>

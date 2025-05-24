@@ -14,3 +14,8 @@ export const selecIsloading = createSelector(
   selectLandingState,
   (state: LandingState) => state.isLoading
 );
+
+export const selectWizard = createSelector(
+  selectLandingState,
+  (state: LandingState) => state.wizard
+);

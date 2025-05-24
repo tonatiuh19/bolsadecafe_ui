@@ -56,5 +56,61 @@ export const LandingReducer = createRehydrateReducer(
       ...state,
       ...initialLandingState,
     };
+  }),
+  on(LandingActions.setRoast, (state: LandingState, { roast, subsType }) => {
+    return {
+      ...state,
+      wizard: {
+        ...state.wizard,
+        roast: roast,
+        subsType: subsType,
+        wizardStep: 2,
+      },
+    };
+  }),
+  on(LandingActions.cleanWizard, (state: LandingState) => {
+    return {
+      ...state,
+      wizard: {
+        ...initialLandingState.wizard,
+      },
+    };
+  }),
+  on(
+    LandingActions.setAddress,
+    (state: LandingState, { address, subsType }) => {
+      return {
+        ...state,
+        wizard: {
+          ...state.wizard,
+          address: address,
+          subsType: subsType,
+          wizardStep: 3,
+        },
+      };
+    }
+  ),
+  on(
+    LandingActions.setRecipient,
+    (state: LandingState, { recipient, subsType }) => {
+      return {
+        ...state,
+        wizard: {
+          ...state.wizard,
+          recipient: recipient,
+          subsType: subsType,
+          wizardStep: 4,
+        },
+      };
+    }
+  ),
+  on(LandingActions.setWizardStep, (state: LandingState, { subsType }) => {
+    return {
+      ...state,
+      wizard: {
+        ...state.wizard,
+        subsType: subsType,
+      },
+    };
   })
 );

@@ -6,6 +6,14 @@ import {
   Renderer2,
 } from '@angular/core';
 import { faCheck } from '@fortawesome/free-solid-svg-icons';
+import { Store } from '@ngrx/store';
+import { fromLanding } from '../../shared/store/selectors';
+import { Subject, takeUntil } from 'rxjs';
+import {
+  LandingState,
+  UserModel,
+  WizardModel,
+} from '../../shared/store/states/landing.models';
 
 @Component({
   selector: 'app-pricing',
@@ -14,6 +22,13 @@ import { faCheck } from '@fortawesome/free-solid-svg-icons';
   styleUrl: './pricing.component.css',
 })
 export class PricingComponent implements OnInit, OnDestroy, AfterViewChecked {
+  public selectLandingState$ = this.store.select(
+    fromLanding.selectLandingState
+  );
+
+  wizard!: WizardModel;
+  user!: UserModel;
+
   isSuscribtionPage = false;
   subsType = 0;
 
@@ -21,14 +36,26 @@ export class PricingComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   private lastSuscribtionPage = false;
 
-  constructor(private renderer: Renderer2) {}
+  private unsubscribe$ = new Subject<void>();
+
+  constructor(private renderer: Renderer2, private store: Store) {}
 
   ngOnInit() {
-    // Initial styles
     this.applyBodyStyles();
+
+    this.selectLandingState$
+      .pipe(takeUntil(this.unsubscribe$))
+      .subscribe((state: LandingState) => {
+        this.subsType = state.wizard.subsType;
+        this.isSuscribtionPage = this.subsType !== 0;
+        this.wizard = state.wizard;
+        this.user = state.user;
+      });
   }
 
   ngOnDestroy() {
+    this.unsubscribe$.next();
+    this.unsubscribe$.complete();
     this.removeBodyStyles();
   }
 

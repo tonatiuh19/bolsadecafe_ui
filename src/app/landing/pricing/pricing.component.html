@@ -128,10 +128,7 @@
                 a toda tu plantilla en México
               </li>
             </ul>
-            <button
-              class="btn btn-outline-light rounded-pill px-4"
-              (click)="goToSuscribtionPage(4)"
-            >
+            <button class="btn btn-outline-light rounded-pill px-4">
               Contáctanos
             </button>
           </div>
@@ -144,5 +141,7 @@
 <app-coffee-wizard
   *ngIf="isSuscribtionPage"
   [subsType]="subsType"
+  [wizard]="wizard"
+  [user]="user"
   (cancelWizard)="isSuscribtionPage = false"
 ></app-coffee-wizard>

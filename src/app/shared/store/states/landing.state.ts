@@ -14,6 +14,28 @@ export const initialLandingState: LandingState = {
     phone: 0,
     isLoggedIn: false,
   },
+  wizard: {
+    roast: {
+      id_product_f_cuerpo_types: 0,
+      value: '',
+      subtitle: '',
+      image_radio: '',
+    },
+    address: {
+      address: '',
+      extNumber: '',
+      intNumber: '',
+      city: '',
+      state: '',
+      zip: '',
+    },
+    recipient: {
+      name: '',
+      phone: '',
+    },
+    subsType: 0,
+    wizardStep: 0,
+  },
   isLoading: false,
   isError: false,
 };

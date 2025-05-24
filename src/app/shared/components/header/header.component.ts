@@ -46,8 +46,6 @@ export class HeaderComponent implements OnInit {
       .pipe(takeUntil(this.unsubscribe$))
       .subscribe((state) => {
         this.user = state.user ?? ({} as UserModel);
-        console.log('user', this.user);
-
         this.isLogged = !!this.user.isLoggedIn;
       });
 
