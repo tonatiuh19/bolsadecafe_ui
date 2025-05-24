@@ -7,52 +7,28 @@ import { DOMAIN } from '../store/states/landing.models';
   providedIn: 'root',
 })
 export class LandingService {
-  public GET_USER_NAME_BY_USERNAME = `${DOMAIN}/getUserByUserName.php`;
   public GET_LOGIN = `${DOMAIN}/getLogin.php`;
   public SET_USER_NAME = `${DOMAIN}/setUserName.php`;
   public INSERT_VISITOR = `${DOMAIN}/insertVisitor.php`;
 
   constructor(private httpClient: HttpClient) {}
 
-  public getUserByUserName(username: string): Observable<any> {
-    return this.httpClient
-      .post(this.GET_USER_NAME_BY_USERNAME, {
-        username: username,
-      })
-      .pipe(
-        map((response) => {
-          return response;
-        })
-      );
-  }
-
   public authenticateUser(
     email: string,
+    email_verified: boolean,
     given_name: string,
     family_name: string,
     picture: string,
-    email_verified: boolean
+    phone: number
   ): Observable<any> {
     return this.httpClient
       .post(this.GET_LOGIN, {
-        userEmail: email,
-        userEmailVerified: email_verified,
-        userName: given_name,
-        userSurname: family_name,
-        picture: picture,
-      })
-      .pipe(
-        map((response) => {
-          return response;
-        })
-      );
-  }
-
-  public setUserName(id_user: number, userName: string): Observable<any> {
-    return this.httpClient
-      .post(this.SET_USER_NAME, {
-        id_user: id_user,
-        userUserName: userName,
+        bdec_user_email: email,
+        bdec_user_email_verified: email_verified,
+        bdec_user_name: given_name,
+        bdec_user_last_name: family_name,
+        bdec_user_picture: picture,
+        bdec_user_phone: phone,
       })
       .pipe(
         map((response) => {

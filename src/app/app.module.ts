@@ -13,6 +13,7 @@ import { StoreDevtoolsModule } from '@ngrx/store-devtools';
 import { EffectsModule } from '@ngrx/effects';
 import { StoreRouterConnectingModule, routerReducer } from '@ngrx/router-store';
 import Aura from '@primeng/themes/aura';
+import { LoadingMaskModule } from './shared/components/loading-mask/loading-mask.module';
 
 @NgModule({
   declarations: [AppComponent],
@@ -29,6 +30,7 @@ import Aura from '@primeng/themes/aura';
     StoreDevtoolsModule.instrument({
       maxAge: 25,
     }),
+    LoadingMaskModule,
   ],
   providers: [
     provideHttpClient(),

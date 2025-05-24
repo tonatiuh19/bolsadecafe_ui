@@ -11,39 +11,6 @@ export const LandingReducer = createRehydrateReducer(
   { key: LANDING_FEATURE_KEY },
   initialLandingState,
 
-  on(LandingActions.getUserName, (state: LandingState, { username }: any) => {
-    return {
-      ...state,
-      checkingUser: {
-        userName: '',
-        userNameInput: username,
-        isLoading: true,
-      },
-    };
-  }),
-  on(LandingActions.getUserNameSuccess, (state: LandingState, { userName }) => {
-    return {
-      ...state,
-      /*checkingUser: {
-        ...state.checkingUser,
-        userName: userName,
-        isLoading: false,
-      },*/
-    };
-  }),
-  on(
-    LandingActions.getUserNameFailure,
-    (state: LandingState, { errorResponse }) => {
-      return {
-        ...state,
-        checkingUser: {
-          userName: '',
-          isLoading: false,
-        },
-        isError: true,
-      };
-    }
-  ),
   on(LandingActions.authenticateUser, (state: LandingState, { user }: any) => {
     return {
       ...state,
@@ -56,7 +23,18 @@ export const LandingReducer = createRehydrateReducer(
     (state: LandingState, { user }: any) => {
       return {
         ...state,
-        user: user,
+        user: {
+          ...state.user,
+          id_user: user.bdec_user_id,
+          email: user.bdec_user_email,
+          email_verified: user.bdec_email_verified,
+          picture: user.bdec_user_picture,
+          name: user.bdec_user_name,
+          last_name: user.bdec_user_last_name,
+          stripe_id: user.bdec_user_stripe_id,
+          phone: user.bdec_user_phone,
+          isLoggedIn: true,
+        },
         isLoading: false,
         isError: false,
       };

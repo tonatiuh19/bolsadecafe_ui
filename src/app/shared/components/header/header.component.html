@@ -16,6 +16,12 @@
     <div class="d-sm-block d-md-none">
       <div class="text-center">
         <button
+          class="btn btn-primary btn-sm me-1 order-0"
+          (click)="goToSubscriptions()"
+        >
+          Suscribete
+        </button>
+        <button
           *ngIf="!isLogged"
           class="btn btn-outline-dark btn-sm ms-1"
           (click)="login()"
@@ -30,8 +36,15 @@
             data-bs-toggle="dropdown"
             aria-expanded="false"
           >
-            <fa-icon [icon]="faUserCircle"></fa-icon>
-            <span *ngIf="isLogged"> Usuario</span>
+            <img
+              *ngIf="isLogged"
+              [src]="user.picture"
+              (error)="setDefaultPic($event)"
+              alt="Profile"
+              class="rounded-circle"
+              width="30"
+              height="30"
+            />
           </button>
           <ul
             class="dropdown-menu dropdown-menu-end"
@@ -48,9 +61,8 @@
     </div>
     <div class="d-none d-md-block">
       <button
-        *ngIf="!isLogged"
         class="btn btn-primary me-1 order-0"
-        (click)="login()"
+        (click)="goToSubscriptions()"
       >
         Suscribete
       </button>
@@ -69,8 +81,16 @@
           data-bs-toggle="dropdown"
           aria-expanded="false"
         >
-          <fa-icon [icon]="faUserCircle"></fa-icon>
-          <span *ngIf="isLogged"> Usuario</span>
+          <img
+            *ngIf="isLogged"
+            [src]="user.picture"
+            (error)="setDefaultPic($event)"
+            alt="Profile"
+            class="rounded-circle"
+            width="30"
+            height="30"
+          />
+          <span *ngIf="isLogged"> {{ user.name }} {{ user.last_name }}</span>
         </button>
         <ul
           class="dropdown-menu dropdown-menu-end"

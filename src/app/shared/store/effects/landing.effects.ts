@@ -9,26 +9,6 @@ import { fromLanding } from '../selectors';
 
 @Injectable()
 export class LandingEffects {
-  getUserName$ = createEffect(() => {
-    return this.actions$.pipe(
-      ofType(LandingActions.getUserName),
-      switchMap(({ username }) => {
-        return this.landingService.getUserByUserName(username).pipe(
-          map((response) => {
-            return LandingActions.getUserNameSuccess({
-              userName: response,
-            });
-          }),
-          catchError((error) => {
-            return of(
-              LandingActions.getUserNameFailure({ errorResponse: error })
-            );
-          })
-        );
-      })
-    );
-  });
-
   authenticateUser$ = createEffect(
     () => {
       return this.actions$.pipe(
@@ -44,10 +24,11 @@ export class LandingEffects {
           return this.landingService
             .authenticateUser(
               landingEntity.user.email,
+              landingEntity.user.email_verified,
               landingEntity.user.given_name ?? '',
               landingEntity.user.family_name ?? '',
               landingEntity.user.picture,
-              landingEntity.user.email_verified
+              0
             )
             .pipe(
               map((response) => {

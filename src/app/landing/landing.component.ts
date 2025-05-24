@@ -1,7 +1,12 @@
 import { Component, Renderer2, OnInit, OnDestroy } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { Router } from '@angular/router';
-import { faMugHot, faTruck } from '@fortawesome/free-solid-svg-icons';
+import {
+  faMugHot,
+  faTruck,
+  faArrowRight,
+  faArrowDown,
+} from '@fortawesome/free-solid-svg-icons';
 
 @Component({
   selector: 'app-landing',
@@ -12,6 +17,8 @@ import { faMugHot, faTruck } from '@fortawesome/free-solid-svg-icons';
 export class LandingComponent implements OnInit, OnDestroy {
   faMugHot = faMugHot;
   faTruck = faTruck;
+  faArrowRight = faArrowRight;
+  faArrowDown = faArrowDown;
 
   constructor(
     private router: Router,

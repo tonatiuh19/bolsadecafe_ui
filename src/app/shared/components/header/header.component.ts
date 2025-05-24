@@ -6,6 +6,8 @@ import { Title } from '@angular/platform-browser';
 import { AuthService } from '@auth0/auth0-angular';
 import { Store } from '@ngrx/store';
 import { fromLanding } from '../../store/selectors';
+import { UserModel } from '../../store/states/landing.models';
+import { LandingActions } from '../../store/actions';
 
 @Component({
   selector: 'app-header',
@@ -20,6 +22,8 @@ export class HeaderComponent implements OnInit {
   public selectLandingState$ = this.store.select(
     fromLanding.selectLandingState
   );
+
+  public user: UserModel = {} as UserModel;
 
   faUserCircle = faUserCircle;
   faNewspaper = faNewspaper;
@@ -38,12 +42,26 @@ export class HeaderComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.isLogged = false;
     this.selectLandingState$
       .pipe(takeUntil(this.unsubscribe$))
       .subscribe((state) => {
-        console.log('state', state);
+        this.user = state.user ?? ({} as UserModel);
+        console.log('user', this.user);
+
+        this.isLogged = !!this.user.isLoggedIn;
       });
+
+    this.auth.user$.subscribe((profile) => {
+      if (profile) {
+        this.store.dispatch(
+          LandingActions.authenticateUser({
+            user: {
+              ...profile,
+            },
+          })
+        );
+      }
+    });
   }
 
   ngOnDestroy(): void {
@@ -51,13 +69,25 @@ export class HeaderComponent implements OnInit {
     this.unsubscribe$.complete();
   }
 
-  login(): void {
-    this.router.navigate(['iniciarsesion']);
+  goToSubscriptions() {
+    this.router.navigate(['suscribete']);
   }
 
-  logout(): void {}
+  login(): void {
+    const urlSegment = this.router.url.split('/').slice(1).join('/');
+    this.auth.loginWithRedirect({
+      appState: { target: urlSegment },
+    });
+  }
 
-  goToMyDashboard(): void {
-    this.router.navigate(['dashboard']);
+  logout(): void {
+    this.isLogged = false;
+    this.store.dispatch(LandingActions.logoutUser());
+    this.auth.logout();
+  }
+
+  setDefaultPic(event: Event) {
+    (event.target as HTMLImageElement).src =
+      'https://garbrix.com/regalame/assets/images/user_default.png';
   }
 }

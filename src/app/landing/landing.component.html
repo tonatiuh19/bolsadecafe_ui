@@ -67,73 +67,99 @@
     ¿Cómo funciona mi suscripción de bolsa de café?
   </h2>
   <div class="container pb-5">
-    <div class="row g-4 justify-content-center">
+    <div
+      class="d-flex flex-column flex-md-row justify-content-center align-items-center gap-0"
+    >
       <!-- Step 1 -->
-      <div class="col-12 col-md-4">
+      <div
+        class="step-card bg-white p-4 rounded-4 text-center shadow-sm mx-2 flex-grow-1"
+      >
+        <!-- ...step 1 content... -->
         <div
-          class="step-card bg-white h-100 p-4 rounded-4 text-center shadow-sm"
+          class="step-number-icon mb-3 d-flex justify-content-center align-items-center gap-2"
         >
-          <div
-            class="step-number-icon mb-3 d-flex justify-content-center align-items-center gap-2"
-          >
-            <span class="step-number">1</span>
-            <img
-              src="https://garbrix.com/bdec/assets/images/coffee-bean.svg"
-              alt="Tipo de molido"
-              class="step-icon"
-              style="width: 48px; height: 48px"
-            />
-          </div>
-          <h5 class="fw-bold mb-2">Define el tipo de molido</h5>
-          <p class="mb-0 text-secondary">
-            Elige cómo te gusta tu café: en grano o molido a tu preferencia.
-          </p>
+          <img
+            src="https://garbrix.com/bdec/assets/images/coffee-bean.svg"
+            alt="Tipo de molido"
+            class="step-icon"
+            style="width: 48px; height: 48px"
+          />
         </div>
+        <h5 class="fw-bold mb-2">Define el tipo de molido</h5>
+        <p class="mb-0 text-secondary">
+          Elige cómo te gusta tu café: en grano o molido a tu preferencia.
+        </p>
       </div>
+      <!-- Arrow 1: right on desktop, down on mobile -->
+      <fa-icon
+        *ngIf="true"
+        class="d-none d-md-inline mx-2"
+        [icon]="faArrowRight"
+        size="2x"
+        style="color: #fff; vertical-align: middle"
+      ></fa-icon>
+      <fa-icon
+        *ngIf="true"
+        class="d-inline d-md-none my-2"
+        [icon]="faArrowDown"
+        size="2x"
+        style="color: #fff; vertical-align: middle"
+      ></fa-icon>
       <!-- Step 2 -->
-      <div class="col-12 col-md-4">
+      <div
+        class="step-card bg-white p-4 rounded-4 text-center shadow-sm mx-2 flex-grow-1"
+      >
+        <!-- ...step 2 content... -->
         <div
-          class="step-card bg-white h-100 p-4 rounded-4 text-center shadow-sm"
+          class="step-number-icon mb-3 d-flex justify-content-center align-items-center gap-2"
         >
-          <div
-            class="step-number-icon mb-3 d-flex justify-content-center align-items-center gap-2"
-          >
-            <span class="step-number">2</span>
-            <img
-              src="https://garbrix.com/bdec/assets/images/delivery.svg"
-              alt="Entrega"
-              class="step-icon"
-              style="width: 48px; height: 48px"
-            />
-          </div>
-          <h5 class="fw-bold mb-2">¿Dónde entregamos tu café?</h5>
-          <p class="mb-0 text-secondary">
-            Indica la dirección donde quieres recibir tu café cada mes.
-          </p>
+          <img
+            src="https://garbrix.com/bdec/assets/images/delivery.svg"
+            alt="Entrega"
+            class="step-icon"
+            style="width: 48px; height: 48px"
+          />
         </div>
+        <h5 class="fw-bold mb-2">¿Dónde entregamos tu café?</h5>
+        <p class="mb-0 text-secondary">
+          Indica la dirección donde quieres recibir tu café cada mes.
+        </p>
       </div>
+      <!-- Arrow 2: right on desktop, down on mobile -->
+      <fa-icon
+        *ngIf="true"
+        class="d-none d-md-inline mx-2"
+        [icon]="faArrowRight"
+        size="2x"
+        style="color: #fff; vertical-align: middle"
+      ></fa-icon>
+      <fa-icon
+        *ngIf="true"
+        class="d-inline d-md-none my-2"
+        [icon]="faArrowDown"
+        size="2x"
+        style="color: #fff; vertical-align: middle"
+      ></fa-icon>
       <!-- Step 3 -->
-      <div class="col-12 col-md-4">
+      <div
+        class="step-card bg-white p-4 rounded-4 text-center shadow-sm mx-2 flex-grow-1"
+      >
+        <!-- ...step 3 content... -->
         <div
-          class="step-card bg-white h-100 p-4 rounded-4 text-center shadow-sm"
+          class="step-number-icon mb-3 d-flex justify-content-center align-items-center gap-2"
         >
-          <div
-            class="step-number-icon mb-3 d-flex justify-content-center align-items-center gap-2"
-          >
-            <span class="step-number">3</span>
-            <img
-              src="https://garbrix.com/bdec/assets/images/gift-box.svg"
-              alt="Quién recibe"
-              class="step-icon"
-              style="width: 48px; height: 48px"
-            />
-          </div>
-          <h5 class="fw-bold mb-2">¿Quién recibe el café?</h5>
-          <p class="mb-0 text-secondary">
-            Cuéntanos quién recibirá el café para asegurarnos de que llegue a la
-            persona correcta.
-          </p>
+          <img
+            src="https://garbrix.com/bdec/assets/images/gift-box.svg"
+            alt="Quién recibe"
+            class="step-icon"
+            style="width: 48px; height: 48px"
+          />
         </div>
+        <h5 class="fw-bold mb-2">¿Quién recibe el café?</h5>
+        <p class="mb-0 text-secondary">
+          Cuéntanos quién recibirá el café para asegurarnos de que llegue a la
+          persona correcta.
+        </p>
       </div>
     </div>
     <p class="text-center mt-4 text-white-50">

@@ -15,8 +15,5 @@ export interface UserModel {
   last_name: string;
   stripe_id: string;
   phone: number;
-  about: string;
-  user_name: string;
-  categories?: any;
-  paymentsTypes?: any;
+  isLoggedIn: boolean;
 }
