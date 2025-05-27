@@ -35,6 +35,8 @@ export const LandingReducer = createRehydrateReducer(
           phone: user.bdec_user_phone,
           isLoggedIn: true,
           isProd: user.bdec_environment_is_prod,
+          has_subscription: user.has_subscription,
+          subscription: user.subscription_info,
         },
         isLoading: false,
         isError: false,
@@ -184,6 +186,10 @@ export const LandingReducer = createRehydrateReducer(
           ...state.wizard,
           isPaid: true,
         },
+        user: {
+          ...state.user,
+          has_subscription: true,
+        },
       };
     }
   ),
@@ -195,6 +201,77 @@ export const LandingReducer = createRehydrateReducer(
         isLoading: false,
         isError: true,
 
+        errorResponse: error,
+      };
+    }
+  ),
+  on(
+    LandingActions.retrieveSubscription,
+    (state: LandingState, { stripe_subscription_id }) => {
+      return {
+        ...state,
+        isLoading: true,
+        isError: false,
+      };
+    }
+  ),
+  on(
+    LandingActions.retrieveSubscriptionSuccess,
+    (state: LandingState, { response }: any) => ({
+      ...state,
+      isLoading: false,
+      isError: false,
+      user: {
+        ...state.user,
+        subscription: state.user.subscription
+          ? { ...state.user.subscription, stripe_info: response }
+          : {
+              bdec_subscription_id: 0,
+              bdec_subscription_user_id: 0,
+              bdec_subscription_type: 0,
+              bdec_subscription_stripe_id: '',
+              stripe_info: response,
+            },
+      },
+    })
+  ),
+  on(
+    LandingActions.retrieveSubscriptionFailure,
+    (state: LandingState, { error }: any) => {
+      return {
+        ...state,
+        isLoading: false,
+        isError: true,
+        errorResponse: error,
+      };
+    }
+  ),
+  on(
+    LandingActions.deleteUserAndSubscription,
+    (state: LandingState, { user_id }) => {
+      return {
+        ...state,
+        isLoading: true,
+        isError: false,
+      };
+    }
+  ),
+  on(
+    LandingActions.deleteUserAndSubscriptionSuccess,
+    (state: LandingState, { response }: any) => {
+      return {
+        ...state,
+        ...initialLandingState,
+      };
+    }
+  ),
+  on(
+    LandingActions.deleteUserAndSubscriptionFailure,
+    (state: LandingState, { error }: any) => {
+      return {
+        ...state,
+        isLoading: false,
+        isError: true,
         errorResponse: error,
       };
     }

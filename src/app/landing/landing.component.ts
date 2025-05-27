@@ -7,6 +7,8 @@ import {
   faArrowRight,
   faArrowDown,
 } from '@fortawesome/free-solid-svg-icons';
+import { Store } from '@ngrx/store';
+import { LandingActions } from '../shared/store/actions';
 
 @Component({
   selector: 'app-landing',
@@ -23,10 +25,16 @@ export class LandingComponent implements OnInit, OnDestroy {
   constructor(
     private router: Router,
     private titleService: Title,
-    private renderer: Renderer2
+    private renderer: Renderer2,
+    private store: Store
   ) {}
 
   ngOnInit() {
+    this.store.dispatch(
+      LandingActions.insertVisitor({
+        section: 'landing',
+      })
+    );
     this.renderer.setStyle(document.body, 'overflow-x', 'hidden');
     this.renderer.setStyle(document.body, 'max-width', '100vw');
   }

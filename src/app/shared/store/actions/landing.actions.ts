@@ -77,3 +77,46 @@ export const subscribeCustomerFailure = createAction(
   `${actor} Subscribe Customer Failure`,
   props<{ error: any }>()
 );
+
+export const retrieveSubscription = createAction(
+  `${actor} Retrieve Subscription`,
+  props<{ stripe_subscription_id: string }>()
+);
+
+export const retrieveSubscriptionSuccess = createAction(
+  `${actor} Retrieve Subscription Success`,
+  props<{ response: any }>()
+);
+
+export const retrieveSubscriptionFailure = createAction(
+  `${actor} Retrieve Subscription Failure`,
+  props<{ error: any }>()
+);
+
+export const insertVisitor = createAction(
+  `${actor} Insert Visitor`,
+  props<{ section: string }>()
+);
+
+export const insertVisitorSuccess = createAction(
+  `${actor} Insert Visitor Success`,
+  props<{ response: any }>()
+);
+export const insertVisitorFailure = createAction(
+  `${actor} Insert Visitor Failure`,
+  props<{ error: any }>()
+);
+
+//TODO: Remove this when ux is ready
+export const deleteUserAndSubscription = createAction(
+  `${actor} Delete User and Subscription`,
+  props<{ user_id: number }>()
+);
+export const deleteUserAndSubscriptionSuccess = createAction(
+  `${actor} Delete User and Subscription Success`,
+  props<{ response: any }>()
+);
+export const deleteUserAndSubscriptionFailure = createAction(
+  `${actor} Delete User and Subscription Failure`,
+  props<{ error: any }>()
+);

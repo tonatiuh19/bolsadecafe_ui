@@ -36,6 +36,8 @@ export class PricingComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   faCheck = faCheck;
 
+  hasSubscription = false;
+
   private lastSuscribtionPage = false;
 
   private unsubscribe$ = new Subject<void>();
@@ -48,6 +50,11 @@ export class PricingComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   ngOnInit() {
     this.applyBodyStyles();
+    this.store.dispatch(
+      LandingActions.insertVisitor({
+        section: 'pricing',
+      })
+    );
 
     this.selectLandingState$
       .pipe(takeUntil(this.unsubscribe$))
@@ -56,6 +63,8 @@ export class PricingComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.isSuscribtionPage = this.subsType !== 0;
         this.wizard = state.wizard;
         this.user = state.user;
+
+        this.hasSubscription = this.user.has_subscription ?? false;
 
         if (this.wizard.isPaid) {
           this.router.navigate(['subscripcion-exitosa']);
@@ -87,6 +96,10 @@ export class PricingComponent implements OnInit, OnDestroy, AfterViewChecked {
     if (!this.isSuscribtionPage) {
       this.applyBodyStyles();
     }
+  }
+
+  goToMySubscription() {
+    this.router.navigate(['mi-suscripcion']);
   }
 
   private applyBodyStyles() {

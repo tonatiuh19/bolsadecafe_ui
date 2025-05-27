@@ -16,6 +16,7 @@ import Aura from '@primeng/themes/aura';
 import { LoadingMaskModule } from './shared/components/loading-mask/loading-mask.module';
 import { SuccessPageModule } from './shared/components/success-page/success-page.module';
 import { PaymentDeclinedPageModule } from './shared/components/payment-declined-page/payment-declined-page.module';
+import { SubscriptionManagementModule } from './landing/subscription-management/subscription-management.module';
 
 @NgModule({
   declarations: [AppComponent],
@@ -25,6 +26,7 @@ import { PaymentDeclinedPageModule } from './shared/components/payment-declined-
     LandingModule,
     SuccessPageModule,
     PaymentDeclinedPageModule,
+    SubscriptionManagementModule,
     BrowserAnimationsModule,
     EffectsModule.forRoot([]),
     NgrxStoreModule.forRoot({

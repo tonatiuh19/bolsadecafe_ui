@@ -33,10 +33,18 @@
               </li>
             </ul>
             <button
+              *ngIf="!hasSubscription"
               class="btn btn-primary rounded-pill px-4"
               (click)="goToSuscribtionPage(1)"
             >
               Suscribete
+            </button>
+            <button
+              *ngIf="hasSubscription"
+              class="btn btn-primary rounded-pill px-4"
+              (click)="goToMySubscription()"
+            >
+              Actualizar suscripción
             </button>
           </div>
         </div>
@@ -64,10 +72,18 @@
               </li>
             </ul>
             <button
+              *ngIf="!hasSubscription"
               class="btn btn-primary rounded-pill px-4"
               (click)="goToSuscribtionPage(2)"
             >
               Suscribete
+            </button>
+            <button
+              *ngIf="hasSubscription"
+              class="btn btn-primary rounded-pill px-4"
+              (click)="goToMySubscription()"
+            >
+              Actualizar suscripción
             </button>
           </div>
         </div>
@@ -95,10 +111,18 @@
               </li>
             </ul>
             <button
+              *ngIf="!hasSubscription"
               class="btn btn-primary rounded-pill px-4"
               (click)="goToSuscribtionPage(3)"
             >
               Suscribete
+            </button>
+            <button
+              *ngIf="hasSubscription"
+              class="btn btn-primary rounded-pill px-4"
+              (click)="goToMySubscription()"
+            >
+              Actualizar suscripción
             </button>
           </div>
         </div>

@@ -29,6 +29,7 @@ export class HeaderComponent implements OnInit {
   faNewspaper = faNewspaper;
 
   isLogged = false;
+  hasSubscription = false;
 
   titlePage = '';
 
@@ -46,6 +47,7 @@ export class HeaderComponent implements OnInit {
       .pipe(takeUntil(this.unsubscribe$))
       .subscribe((state) => {
         this.user = state.user ?? ({} as UserModel);
+        this.hasSubscription = this.user.has_subscription ?? false;
         this.isLogged = !!this.user.isLoggedIn;
       });
 
@@ -71,6 +73,10 @@ export class HeaderComponent implements OnInit {
     this.router.navigate(['suscribete']);
   }
 
+  goToMySubscription() {
+    this.router.navigate(['mi-suscripcion']);
+  }
+
   login(): void {
     const urlSegment = this.router.url.split('/').slice(1).join('/');
     this.auth.loginWithRedirect({
@@ -80,6 +86,7 @@ export class HeaderComponent implements OnInit {
 
   logout(): void {
     this.isLogged = false;
+    this.router.navigate(['']);
     this.store.dispatch(LandingActions.logoutUser());
     this.auth.logout();
   }

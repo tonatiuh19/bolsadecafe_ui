@@ -19,3 +19,8 @@ export const selectWizard = createSelector(
   selectLandingState,
   (state: LandingState) => state.wizard
 );
+
+export const selectSubscription = createSelector(
+  selectUser,
+  (user) => user.subscription
+);

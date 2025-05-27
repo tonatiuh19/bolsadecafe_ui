@@ -206,10 +206,9 @@ export class CoffeeWizardComponent
     this.stripe = await this.stripeService.getStripe(this.isTesting);
     if (this.stripe) {
       this.elements = this.stripe.elements({
-        locale: 'es', // Set the locale to Spanish
+        locale: 'es',
       });
       this.card = this.elements.create('card', { style });
-      //this.card = this.elements.create('card');
       this.card.mount('#card-element');
     }
   }

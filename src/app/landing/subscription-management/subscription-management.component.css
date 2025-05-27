@@ -1,0 +1,32 @@
+.main-container {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.management-outer {
+  min-height: 80vh;
+  background: #f8f9fa;
+  padding: 3rem 0;
+}
+.management-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.card {
+  border-radius: 1rem;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+}
+@media (max-width: 768px) {
+  .main-container {
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    padding-top: 5rem !important;
+    padding-bottom: 5rem !important;
+  }
+
+  .management-container {
+    padding: 0 1rem;
+  }
+}

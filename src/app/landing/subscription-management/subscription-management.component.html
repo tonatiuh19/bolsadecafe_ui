@@ -1,0 +1,143 @@
+<app-header [isMain]="false"></app-header>
+<section class="management-outer main-container pt-5">
+  <div class="management-container pt-5">
+    <div class="row">
+      <div class="col-12 text-center mb-4">
+        <h1 class="display-4 fw-bold pt-5">Gestión de tu Suscripción</h1>
+      </div>
+    </div>
+    <div class="row g-4">
+      <!-- Left: Subscription Details -->
+      <div class="col-12 col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="card-title mb-0">Detalles de la suscripción</h5>
+              <button
+                class="btn btn-link btn-sm"
+                (click)="updateSubscription()"
+              >
+                Actualizar suscripción
+              </button>
+            </div>
+            <ul class="list-unstyled">
+              <li><strong>Plan:</strong> {{ subscription.plan }}</li>
+              <li><strong>Precio:</strong> ${{ subscription.price }}/mes</li>
+              <li><strong>Estado:</strong> {{ subscription.status }}</li>
+              <li>
+                <strong>Próxima entrega:</strong>
+                {{ subscription.nextDelivery }}
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <!-- Right: Recipient, Payment & Actions -->
+      <div class="col-12 col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title mb-3">Datos de envío y pago</h5>
+            <ul class="list-unstyled">
+              <li><strong>Recibe:</strong> {{ subscription.recipient }}</li>
+              <li><strong>Dirección:</strong> {{ subscription.address }}</li>
+              <li><strong>Email:</strong> {{ subscription.email }}</li>
+              <li>
+                <strong>Método de pago:</strong>
+                {{ subscription.paymentMethod }}
+                <button
+                  class="btn btn-link p-0 ms-2"
+                  (click)="updatePaymentMethod()"
+                >
+                  Actualizar
+                </button>
+              </li>
+            </ul>
+            <hr />
+            <div class="d-flex flex-column gap-2">
+              <button class="btn btn-outline-primary">Editar dirección</button>
+              <!-- Dropdown for more options -->
+              <div class="dropdown w-100">
+                <button
+                  class="btn btn-outline-secondary dropdown-toggle w-100"
+                  type="button"
+                  data-bs-toggle="dropdown"
+                >
+                  Más opciones
+                </button>
+                <ul class="dropdown-menu">
+                  <li>
+                    <button
+                      class="dropdown-item text-danger"
+                      (click)="openCancelModal()"
+                    >
+                      Cancelar suscripción
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<app-footer></app-footer>
+
+<div
+  class="modal fade"
+  id="cancelModal"
+  tabindex="-1"
+  aria-labelledby="cancelModalLabel"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="cancelModalLabel">Confirmar cancelación</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Cerrar"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <p>
+          Para cancelar tu suscripción, escribe la siguiente frase exactamente
+          como aparece: (esto es para evitar cancelaciones accidentales o
+          fraudulentas)
+        </p>
+        <div
+          class="user-select-none bg-light border rounded p-2 mb-3 text-center"
+          style="
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+          "
+        >
+          <strong>{{ cancelPhrase }}</strong>
+        </div>
+        <input
+          type="text"
+          class="form-control"
+          [(ngModel)]="cancelInput"
+          placeholder="Escribe la frase aquí"
+        />
+      </div>
+      <div class="modal-footer">
+        <button
+          type="button"
+          class="btn btn-danger"
+          [disabled]="cancelInput !== cancelPhrase"
+          (click)="confirmCancel()"
+        >
+          Cancelar suscripción
+        </button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

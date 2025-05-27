@@ -14,6 +14,8 @@ export const initialLandingState: LandingState = {
     phone: 0,
     isLoggedIn: false,
     isProd: false,
+    has_subscription: false,
+    subscription: null,
   },
   wizard: {
     roast: {

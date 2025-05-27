@@ -50,6 +50,12 @@
             class="dropdown-menu dropdown-menu-end"
             aria-labelledby="dropdownMenuButton"
           >
+            <li *ngIf="hasSubscription">
+              <button class="dropdown-item" (click)="goToMySubscription()">
+                Mi Subscripción
+              </button>
+            </li>
+            <li *ngIf="hasSubscription"><hr class="dropdown-divider" /></li>
             <li>
               <button class="dropdown-item" (click)="logout()">
                 Cerrar sesión
@@ -96,6 +102,12 @@
           class="dropdown-menu dropdown-menu-end"
           aria-labelledby="dropdownMenuButton"
         >
+          <li *ngIf="hasSubscription">
+            <button class="dropdown-item" (click)="goToMySubscription()">
+              Mi Subscripción
+            </button>
+          </li>
+          <li *ngIf="hasSubscription"><hr class="dropdown-divider" /></li>
           <li>
             <button class="dropdown-item" (click)="logout()">
               Cerrar sesión

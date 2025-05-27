@@ -17,6 +17,6 @@ export class PaymentDeclinedPageComponent {
 
   retry(): void {
     this.store.dispatch(LandingActions.cleanPayment());
-    this.router.navigate(['suscribete']);
+    this.router.navigate(['mi-suscripcion']);
   }
 }

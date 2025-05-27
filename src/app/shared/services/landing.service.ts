@@ -9,9 +9,13 @@ import { DOMAIN } from '../store/states/landing.models';
 export class LandingService {
   public GET_LOGIN = `${DOMAIN}/getLogin.php`;
   public SET_USER_NAME = `${DOMAIN}/setUserName.php`;
-  public INSERT_VISITOR = `${DOMAIN}/insertVisitor.php`;
   public ATTACH_PAYMENT_METHOD = `${DOMAIN}/attach_payment_method.php`;
   public SUBSCRIBE_CUSTOMER = `${DOMAIN}/subscribe_customer.php`;
+  public RETRIVE_SUB = `${DOMAIN}/retrive_subscription_by_id.php`;
+  public INSERT_VISITOR = `${DOMAIN}/insertVisitor.php`;
+
+  //TODO: Remove this when ux is ready
+  public DELETE_USER_AND_SUB = `${DOMAIN}/deleteUserAndSubscription.php`;
 
   constructor(private httpClient: HttpClient) {}
 
@@ -79,6 +83,25 @@ export class LandingService {
         roast,
         address,
         recipient,
+      })
+      .pipe(map((response) => response));
+  }
+
+  public retrieveSubscriptionById(
+    stripe_subscription_id: string
+  ): Observable<any> {
+    return this.httpClient
+      .post(this.RETRIVE_SUB, {
+        stripe_subscription_id,
+      })
+      .pipe(map((response) => response));
+  }
+
+  //TODO: Remove this when ux is ready
+  public deleteUserAndSubscription(user_id: number): Observable<any> {
+    return this.httpClient
+      .post(this.DELETE_USER_AND_SUB, {
+        user_id,
       })
       .pipe(map((response) => response));
   }

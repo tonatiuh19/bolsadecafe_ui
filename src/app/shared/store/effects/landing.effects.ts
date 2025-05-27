@@ -100,6 +100,55 @@ export class LandingEffects {
     )
   );
 
+  retriveCustomerSubscription$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(LandingActions.retrieveSubscription),
+      switchMap(({ stripe_subscription_id }) =>
+        this.landingService
+          .retrieveSubscriptionById(stripe_subscription_id)
+          .pipe(
+            map((response) =>
+              LandingActions.retrieveSubscriptionSuccess({ response })
+            ),
+            catchError((error) =>
+              of(LandingActions.retrieveSubscriptionFailure({ error }))
+            )
+          )
+      )
+    )
+  );
+
+  insertVisitor$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(LandingActions.insertVisitor),
+      switchMap(({ section }) =>
+        this.landingService.insertVisitor(section).pipe(
+          map((response) => LandingActions.insertVisitorSuccess({ response })),
+          catchError((error) =>
+            of(LandingActions.insertVisitorFailure({ error }))
+          )
+        )
+      )
+    )
+  );
+
+  //TODO: Remove this when ux is ready
+  deleteUserAndSubscription$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(LandingActions.deleteUserAndSubscription),
+      switchMap(({ user_id }) =>
+        this.landingService.deleteUserAndSubscription(user_id).pipe(
+          map((response) =>
+            LandingActions.deleteUserAndSubscriptionSuccess({ response })
+          ),
+          catchError((error) =>
+            of(LandingActions.deleteUserAndSubscriptionFailure({ error }))
+          )
+        )
+      )
+    )
+  );
+
   constructor(
     private actions$: Actions,
     private store: Store,
