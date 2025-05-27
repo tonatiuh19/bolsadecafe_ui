@@ -14,6 +14,8 @@ import { EffectsModule } from '@ngrx/effects';
 import { StoreRouterConnectingModule, routerReducer } from '@ngrx/router-store';
 import Aura from '@primeng/themes/aura';
 import { LoadingMaskModule } from './shared/components/loading-mask/loading-mask.module';
+import { SuccessPageModule } from './shared/components/success-page/success-page.module';
+import { PaymentDeclinedPageModule } from './shared/components/payment-declined-page/payment-declined-page.module';
 
 @NgModule({
   declarations: [AppComponent],
@@ -21,6 +23,8 @@ import { LoadingMaskModule } from './shared/components/loading-mask/loading-mask
     BrowserModule,
     AppRoutingModule,
     LandingModule,
+    SuccessPageModule,
+    PaymentDeclinedPageModule,
     BrowserAnimationsModule,
     EffectsModule.forRoot([]),
     NgrxStoreModule.forRoot({

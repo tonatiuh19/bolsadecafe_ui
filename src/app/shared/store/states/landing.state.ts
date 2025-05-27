@@ -13,6 +13,7 @@ export const initialLandingState: LandingState = {
     stripe_id: '',
     phone: 0,
     isLoggedIn: false,
+    isProd: false,
   },
   wizard: {
     roast: {
@@ -25,6 +26,7 @@ export const initialLandingState: LandingState = {
       address: '',
       extNumber: '',
       intNumber: '',
+      reference: '',
       city: '',
       state: '',
       zip: '',
@@ -35,6 +37,8 @@ export const initialLandingState: LandingState = {
     },
     subsType: 0,
     wizardStep: 0,
+    isPaid: false,
+    isInvalidPayment: false,
   },
   isLoading: false,
   isError: false,

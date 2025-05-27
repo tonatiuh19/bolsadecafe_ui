@@ -26,6 +26,8 @@ export const logoutUser = createAction(`${actor} Logout User`);
 
 export const cleanWizard = createAction(`${actor} Clean Wizard`);
 
+export const cleanPayment = createAction(`${actor} Clean Payment`);
+
 export const setRoast = createAction(
   `${actor} Set Roast`,
   props<{ roast: RoastModel; subsType: number }>()
@@ -44,4 +46,34 @@ export const setRecipient = createAction(
 export const setWizardStep = createAction(
   `${actor} Set Wizard Step`,
   props<{ subsType: number }>()
+);
+
+export const attachPaymentMethod = createAction(
+  `${actor} Attach Payment Method`,
+  props<{ paymentMethodId: string; customerId: string }>()
+);
+
+export const attachPaymentMethodSuccess = createAction(
+  `${actor} Attach Payment Method Success`,
+  props<{ response: any }>()
+);
+
+export const attachPaymentMethodFailure = createAction(
+  `${actor} Attach Payment Method Failure`,
+  props<{ error: any }>()
+);
+
+export const subscribeCustomer = createAction(
+  `${actor} Subscribe Customer`,
+  props<{ customerId: string; priceId: string }>()
+);
+
+export const subscribeCustomerSuccess = createAction(
+  `${actor} Subscribe Customer Success`,
+  props<{ response: any }>()
+);
+
+export const subscribeCustomerFailure = createAction(
+  `${actor} Subscribe Customer Failure`,
+  props<{ error: any }>()
 );

@@ -34,6 +34,7 @@ export const LandingReducer = createRehydrateReducer(
           stripe_id: user.bdec_user_stripe_id,
           phone: user.bdec_user_phone,
           isLoggedIn: true,
+          isProd: user.bdec_environment_is_prod,
         },
         isLoading: false,
         isError: false,
@@ -76,6 +77,16 @@ export const LandingReducer = createRehydrateReducer(
       },
     };
   }),
+  on(LandingActions.cleanPayment, (state: LandingState) => {
+    return {
+      ...state,
+      wizard: {
+        ...state.wizard,
+        isPaid: false,
+        isInvalidPayment: false,
+      },
+    };
+  }),
   on(
     LandingActions.setAddress,
     (state: LandingState, { address, subsType }) => {
@@ -112,5 +123,80 @@ export const LandingReducer = createRehydrateReducer(
         subsType: subsType,
       },
     };
-  })
+  }),
+  on(
+    LandingActions.attachPaymentMethod,
+    (state: LandingState, { paymentMethodId, customerId }) => {
+      return {
+        ...state,
+        isLoading: true,
+        isError: false,
+      };
+    }
+  ),
+  on(
+    LandingActions.attachPaymentMethodSuccess,
+    (state: LandingState, { response }: any) => {
+      return {
+        ...state,
+        isLoading: false,
+        isError: false,
+        wizard: {
+          ...state.wizard,
+          isInvalidPayment: false,
+        },
+      };
+    }
+  ),
+  on(
+    LandingActions.attachPaymentMethodFailure,
+    (state: LandingState, { error }: any) => {
+      return {
+        ...state,
+        isLoading: false,
+        isError: true,
+        wizard: {
+          ...state.wizard,
+          isInvalidPayment: true,
+        },
+        errorResponse: error,
+      };
+    }
+  ),
+  on(
+    LandingActions.subscribeCustomer,
+    (state: LandingState, { customerId, priceId }) => {
+      return {
+        ...state,
+        isLoading: true,
+        isError: false,
+      };
+    }
+  ),
+  on(
+    LandingActions.subscribeCustomerSuccess,
+    (state: LandingState, { response }: any) => {
+      return {
+        ...state,
+        isLoading: false,
+        isError: false,
+        wizard: {
+          ...state.wizard,
+          isPaid: true,
+        },
+      };
+    }
+  ),
+  on(
+    LandingActions.subscribeCustomerFailure,
+    (state: LandingState, { error }: any) => {
+      return {
+        ...state,
+        isLoading: false,
+        isError: true,
+
+        errorResponse: error,
+      };
+    }
+  )
 );

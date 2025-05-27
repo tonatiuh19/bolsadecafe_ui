@@ -5,6 +5,7 @@ export interface LandingState {
   wizard: WizardModel;
   isLoading?: boolean;
   isError?: boolean;
+  errorResponse?: string;
 }
 
 export interface UserModel {
@@ -16,6 +17,7 @@ export interface UserModel {
   last_name: string;
   stripe_id: string;
   phone: number;
+  isProd: boolean;
   isLoggedIn: boolean;
 }
 
@@ -25,12 +27,15 @@ export interface WizardModel {
   recipient: RecipientModel;
   subsType: number;
   wizardStep: number;
+  isPaid: boolean;
+  isInvalidPayment: boolean;
 }
 
 export interface AddressModel {
   address: string;
   extNumber: string;
   intNumber: string;
+  reference: string;
   city: string;
   state: string;
   zip: string;

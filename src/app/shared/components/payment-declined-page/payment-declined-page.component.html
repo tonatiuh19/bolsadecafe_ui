@@ -1,0 +1,16 @@
+<div class="declined-outer">
+  <div class="declined-container text-center py-5">
+    <fa-icon
+      [icon]="faTimesCircle"
+      size="6x"
+      class="text-danger mb-4"
+    ></fa-icon>
+    <h1 class="text-danger mb-4">Pago rechazado</h1>
+    <p class="lead mb-4">
+      Lamentablemente, tu pago no pudo ser procesado.<br />
+      Por favor, revisa los datos de tu tarjeta o intenta con otro método de
+      pago.
+    </p>
+    <button class="btn btn-primary" (click)="retry()">Reintentar pago</button>
+  </div>
+</div>

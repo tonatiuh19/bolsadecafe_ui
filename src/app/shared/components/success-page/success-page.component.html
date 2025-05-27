@@ -1,0 +1,50 @@
+<div class="success-outer">
+  <div class="success-container text-center py-5">
+    <img
+      src="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdzJoNDloMmI4YThwdGFpaDBkOGRvcXNmNnp3NTMwNGI2bWcydXVyeiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/MdB3ZxomlJCMWJw7HB/giphy.gif"
+      alt="Corazón animado"
+      style="width: 120px; height: 120px; object-fit: contain"
+      class="mb-4"
+    />
+    <h1 class="text-success mb-4">¡Suscripción exitosa!</h1>
+    <p class="lead mb-4">
+      Tu sueño de recibir café especial en casa ahora es realidad.<br />
+      <span style="font-size: 1.2rem">
+        “El café une corazones y hoy, uno de tus sueños se acaba de cumplir.”
+      </span>
+    </p>
+    <div class="card mx-auto mb-4" style="max-width: 500px">
+      <div class="card-body">
+        <h5 class="card-title text-primary mb-3">Resumen de tu suscripción</h5>
+        <ul class="list-unstyled text-start">
+          <li>
+            <strong>Plan:</strong> {{ planInfo?.label }} - ${{
+              planInfo?.price
+            }}/mes
+          </li>
+          <li><strong>Molido:</strong> {{ roast?.value }}</li>
+          <li>
+            <strong>Dirección:</strong>
+            {{ address?.address }}, {{ address?.extNumber }}
+            <span *ngIf="address?.intNumber"
+              >, Int. {{ address?.intNumber }}</span
+            >, {{ address?.city }}, {{ address?.state }}, CP {{ address?.zip }}
+          </li>
+          <li>
+            <strong>Recibe:</strong> {{ recipient?.name }} ({{
+              recipient?.phone
+            }})
+          </li>
+        </ul>
+      </div>
+    </div>
+    <div class="mx-auto" style="max-width: 500px">
+      Todos los detalles de tu envío serán enviados a tu correo electrónico.
+    </div>
+    <div class="mt-4">
+      <button class="btn btn-primary" (click)="goToSubscriptionPanel()">
+        Volver al panel de subscripción
+      </button>
+    </div>
+  </div>
+</div>

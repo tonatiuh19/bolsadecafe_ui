@@ -14,6 +14,8 @@ import {
   UserModel,
   WizardModel,
 } from '../../shared/store/states/landing.models';
+import { Router } from '@angular/router';
+import { LandingActions } from '../../shared/store/actions';
 
 @Component({
   selector: 'app-pricing',
@@ -38,7 +40,11 @@ export class PricingComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   private unsubscribe$ = new Subject<void>();
 
-  constructor(private renderer: Renderer2, private store: Store) {}
+  constructor(
+    private renderer: Renderer2,
+    private store: Store,
+    private router: Router
+  ) {}
 
   ngOnInit() {
     this.applyBodyStyles();
@@ -50,6 +56,14 @@ export class PricingComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.isSuscribtionPage = this.subsType !== 0;
         this.wizard = state.wizard;
         this.user = state.user;
+
+        if (this.wizard.isPaid) {
+          this.router.navigate(['subscripcion-exitosa']);
+        }
+
+        if (this.wizard.isInvalidPayment) {
+          this.router.navigate(['pago-declinado']);
+        }
       });
   }
 

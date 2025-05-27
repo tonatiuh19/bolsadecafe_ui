@@ -1,0 +1,30 @@
+.success-outer {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8f9fa;
+}
+
+.success-container {
+  background: #fff;
+  border-radius: 1rem;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+  max-width: 600px;
+  margin: 2rem auto;
+  padding: 2rem;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .success-outer {
+    align-items: flex-start;
+    justify-content: flex-start;
+    min-height: unset;
+    padding-top: 2rem;
+  }
+  .success-container {
+    margin: 1rem;
+    padding: 1rem;
+  }
+}

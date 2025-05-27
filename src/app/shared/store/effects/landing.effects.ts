@@ -56,6 +56,50 @@ export class LandingEffects {
     //{ dispatch: false }
   );
 
+  attachPaymentMethod$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(LandingActions.attachPaymentMethod),
+      switchMap(({ paymentMethodId, customerId }) =>
+        this.landingService
+          .attachPaymentMethodToCustomer(paymentMethodId, customerId)
+          .pipe(
+            map((response) =>
+              LandingActions.attachPaymentMethodSuccess({ response })
+            ),
+            catchError((error) =>
+              of(LandingActions.attachPaymentMethodFailure({ error }))
+            )
+          )
+      )
+    )
+  );
+
+  subscribeAfterAttach$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(LandingActions.attachPaymentMethodSuccess),
+      withLatestFrom(this.store.select(fromLanding.selectLandingState)),
+      switchMap(([action, state]) => {
+        return this.landingService
+          .subscribeCustomerToPlan(
+            state.user.stripe_id,
+            String(state.wizard.subsType),
+            state.user.id_user,
+            state.wizard.roast,
+            state.wizard.address,
+            state.wizard.recipient
+          )
+          .pipe(
+            map((response) =>
+              LandingActions.subscribeCustomerSuccess({ response })
+            ),
+            catchError((error) =>
+              of(LandingActions.subscribeCustomerFailure({ error }))
+            )
+          );
+      })
+    )
+  );
+
   constructor(
     private actions$: Actions,
     private store: Store,

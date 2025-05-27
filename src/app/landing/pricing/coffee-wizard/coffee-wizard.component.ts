@@ -15,6 +15,8 @@ import {
   faLongArrowAltRight,
   faTimes,
   faUserCircle,
+  faMugHot,
+  faLock,
 } from '@fortawesome/free-solid-svg-icons';
 import {
   UserModel,
@@ -25,6 +27,8 @@ import { LandingActions } from '../../../shared/store/actions';
 import { Router } from '@angular/router';
 import { Title } from '@angular/platform-browser';
 import { AuthService } from '@auth0/auth0-angular';
+import { Stripe, StripeElements, StripeCardElement } from '@stripe/stripe-js';
+import { StripeService } from '../../../shared/services/stripe.service';
 
 @Component({
   selector: 'app-coffee-wizard',
@@ -58,6 +62,8 @@ export class CoffeeWizardComponent
   faLongArrowAltRight = faLongArrowAltRight;
   faTimes = faTimes;
   faUserCircle = faUserCircle;
+  faMugHot = faMugHot;
+  faLock = faLock;
 
   roastOptions = [
     {
@@ -83,6 +89,16 @@ export class CoffeeWizardComponent
     },
   ];
 
+  public isProcessingPayment = false;
+  public isLoadingCheckout = false;
+  public isStripeError = false;
+  public stripeErrorMessage = '';
+
+  private stripe: Stripe | null = null;
+  private elements: StripeElements | null = null;
+  private card: StripeCardElement | null = null;
+  private isTesting = true; // Set to true for testing, false for production
+
   private firstRender = true;
 
   constructor(
@@ -91,13 +107,15 @@ export class CoffeeWizardComponent
     private store: Store,
     private router: Router,
     private titleService: Title,
-    public auth: AuthService
+    public auth: AuthService,
+    private stripeService: StripeService
   ) {
     this.addressForm = this.fb.group({
       address: ['', Validators.required],
       extNumber: ['', Validators.required],
       intNumber: [''],
       city: ['', Validators.required],
+      reference: [''],
       state: ['', Validators.required],
       zip: ['', Validators.required],
     });
@@ -117,6 +135,8 @@ export class CoffeeWizardComponent
   }
 
   ngOnInit() {
+    this.isProcessingPayment = false;
+
     if (this.wizard) {
       if (this.wizard.roast.id_product_f_cuerpo_types) {
         this.selectRoast(this.wizard.roast.id_product_f_cuerpo_types);
@@ -127,6 +147,7 @@ export class CoffeeWizardComponent
           address: this.wizard.address.address,
           extNumber: this.wizard.address.extNumber,
           intNumber: this.wizard.address.intNumber,
+          reference: this.wizard.address.reference,
           city: this.wizard.address.city,
           state: this.wizard.address.state,
           zip: this.wizard.address.zip,
@@ -145,7 +166,7 @@ export class CoffeeWizardComponent
       } else if (this.wizard.wizardStep === 3) {
         this.activeIndex = 2; // Go to step 3
       } else if (this.wizard.wizardStep === 4) {
-        this.activeIndex = 3; // Go to step 4
+        this.activeIndex = 2; // Go to step 3
       } else {
         this.activeIndex = 0; // Default to step 1
       }
@@ -165,6 +186,32 @@ export class CoffeeWizardComponent
     }
 
     this.applyBodyStyles();
+  }
+
+  async setupStripe() {
+    const style = {
+      base: {
+        color: '#32325d',
+        fontSmoothing: 'antialiased',
+        fontSize: '18px',
+        '::placeholder': {
+          color: '#aab7c4',
+        },
+      },
+      invalid: {
+        color: '#dc3545',
+        iconColor: '#dc3545',
+      },
+    };
+    this.stripe = await this.stripeService.getStripe(this.isTesting);
+    if (this.stripe) {
+      this.elements = this.stripe.elements({
+        locale: 'es', // Set the locale to Spanish
+      });
+      this.card = this.elements.create('card', { style });
+      //this.card = this.elements.create('card');
+      this.card.mount('#card-element');
+    }
   }
 
   @HostListener('window:resize', ['$event'])
@@ -209,6 +256,11 @@ export class CoffeeWizardComponent
     this.activeIndex = index;
     this.submitted = false;
     activateCallback(index);
+
+    if (this.activeIndex === 3) {
+      this.waitForCardElementAndSetupStripe();
+    }
+
     if (this.activeIndex === 1) {
       this.store.dispatch(
         LandingActions.setRoast({
@@ -228,6 +280,7 @@ export class CoffeeWizardComponent
             address: this.addressForm.value.address,
             extNumber: this.addressForm.value.extNumber,
             intNumber: this.addressForm.value.intNumber,
+            reference: this.addressForm.value.reference,
             city: this.addressForm.value.city,
             state: this.addressForm.value.state,
             zip: this.addressForm.value.zip,
@@ -284,24 +337,6 @@ export class CoffeeWizardComponent
     return true;
   }
 
-  onSubmit() {
-    this.submitted = true;
-
-    if (
-      !this.selectedRoast ||
-      this.addressForm.invalid ||
-      this.recipientForm.invalid
-    ) {
-      return;
-    }
-
-    console.log({
-      roast: this.selectedRoastOption,
-      address: this.addressForm.value,
-      recipient: this.recipientForm.value,
-    });
-  }
-
   login(): void {
     const urlSegment = this.router.url.split('/').slice(1).join('/');
     /*this.store.dispatch(
@@ -310,6 +345,72 @@ export class CoffeeWizardComponent
     this.auth.loginWithRedirect({
       appState: { target: urlSegment },
     });
+  }
+
+  async handlePayment(event: Event) {
+    event.preventDefault();
+
+    this.isLoadingCheckout = true;
+    if (!this.stripe || !this.card) {
+      return;
+    }
+
+    const { token, error } = await this.stripe.createToken(this.card);
+
+    if (error) {
+      this.isLoadingCheckout = false;
+      this.isStripeError = true;
+      this.stripeErrorMessage = error.message || '';
+    } else {
+      this.isProcessingPayment = true;
+      const paymentMethodResult = await this.stripe.createPaymentMethod({
+        type: 'card',
+        card: { token: token.id },
+      });
+
+      if (paymentMethodResult.error) {
+        this.isLoadingCheckout = false;
+        this.isStripeError = true;
+        this.stripeErrorMessage = paymentMethodResult.error.message || '';
+        return;
+      }
+
+      this.isLoadingCheckout = true;
+      this.isStripeError = false;
+      this.submitted = true;
+
+      if (
+        !this.selectedRoast ||
+        this.addressForm.invalid ||
+        this.recipientForm.invalid
+      ) {
+        return;
+      }
+
+      console.log({
+        roast: this.selectedRoastOption,
+        address: this.addressForm.value,
+        recipient: this.recipientForm.value,
+      });
+
+      this.store.dispatch(
+        LandingActions.attachPaymentMethod({
+          paymentMethodId: paymentMethodResult.paymentMethod.id,
+          customerId: this.user.stripe_id,
+        })
+      );
+    }
+  }
+
+  private waitForCardElementAndSetupStripe(retries = 10) {
+    const el = document.getElementById('card-element');
+    if (el) {
+      this.setupStripe();
+    } else if (retries > 0) {
+      setTimeout(() => this.waitForCardElementAndSetupStripe(retries - 1), 50);
+    } else {
+      console.error('Stripe card element not found after waiting.');
+    }
   }
 
   private applyBodyStyles() {

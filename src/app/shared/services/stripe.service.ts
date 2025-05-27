@@ -10,7 +10,7 @@ export class StripeService {
 
   constructor() {
     this.stripePromiseTest = loadStripe(
-      'pk_test_51OtL2vI0AVtzugqlUy24sYbVY170Lw8T6SFaQxpJYqiLRoxs90HRumG2XT9uvuu9ao3zDZ0gGbzUCbdlCoJ0qJlN00gnAE96oj'
+      'pk_test_51RN3Fk04sI0kP0GK83J15kGLwxySZbhrQCuBGsodXrBKzXn2w3bn3HyEUBqDdsm4kXAV0r9hWUXC5W6DS6xw8nMq00Iw1Ys830'
     );
 
     this.stripePromise = loadStripe(
@@ -19,6 +19,7 @@ export class StripeService {
   }
 
   async getStripe(isTesting: boolean) {
+    console.log('isTesting', isTesting);
     return (await isTesting) ? this.stripePromiseTest : this.stripePromise;
   }
 }

@@ -101,7 +101,7 @@
               <h3 class="py-3 mb-2">¿Dónde se entregará tu café?</h3>
               <form [formGroup]="addressForm" class="w-100">
                 <!-- ...form fields... -->
-                <div class="form-group mb-2">
+                <div class="form-group mb-1">
                   <label for="address" class="mb-1"
                     >Dirección: <span class="text-danger">*</span></label
                   >
@@ -150,6 +150,16 @@
                   </div>
                 </div>
                 <div class="form-group mb-3">
+                  <label for="city" class="mb-1">Referencia:</label>
+                  <input
+                    type="text"
+                    id="reference"
+                    class="form-control"
+                    formControlName="reference"
+                    placeholder="Ej: Residencial Chido, Casa Blanca"
+                  />
+                </div>
+                <div class="form-group mb-4">
                   <label for="city" class="mb-1"
                     >Ciudad: <span class="text-danger">*</span></label
                   >
@@ -351,6 +361,7 @@
         </p-step-panel>
 
         <!-- Paso 3 -->
+        <!-- Paso 3 -->
         <p-step-panel [value]="3">
           <ng-template #content let-activateCallback="activateCallback">
             <div
@@ -390,6 +401,32 @@
                   </li>
                 </ul>
               </div>
+
+              <div class="container">
+                <div class="row">
+                  <div class="col-sm-12 text-center">
+                    <div class="col-12 mb-1" *ngIf="isStripeError">
+                      <span class="badge text-bg-danger">
+                        {{ stripeErrorMessage }}
+                      </span>
+                    </div>
+                    <div class="col-12">
+                      <div id="card-element" class="form-control mt-2"></div>
+                    </div>
+                    <p>
+                      Al hacer clic en "Pagar", aceptas nuestros
+                      <a href="/terms" target="_blank"
+                        >Términos y Condiciones</a
+                      >
+                      y nuestra
+                      <a href="/privacy" target="_blank"
+                        >Política de Privacidad</a
+                      >.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div
                 class="d-flex justify-content-start gap-3 pt-6 mt-3 w-100 wizard-btn-group"
               >
@@ -397,18 +434,33 @@
                   type="button"
                   class="btn btn-light"
                   (click)="prevStep(activateCallback, 2)"
+                  [disabled]="isProcessingPayment"
                 >
                   <fa-icon [icon]="faLongArrowAltLeft"></fa-icon> Atrás
                 </button>
                 <button
+                  *ngIf="!isProcessingPayment"
                   type="button"
                   class="btn btn-primary"
-                  (click)="onSubmit()"
+                  (click)="handlePayment($event)"
                 >
-                  Pagar <i class="pi pi-check"></i>
+                  <fa-icon [icon]="faLock"></fa-icon> Suscribirme
+                </button>
+                <button
+                  *ngIf="isProcessingPayment"
+                  type="button"
+                  class="btn btn-primary"
+                  disabled
+                >
+                  Procesando pago
+                  <fa-icon [icon]="faMugHot" class="spin"></fa-icon>
                 </button>
               </div>
             </div>
+            <small *ngIf="isProcessingPayment" class="badge text-bg-dark mt-2">
+              Por favor, no cierres la página ni recargues mientras se procesa
+              el pago.
+            </small>
           </ng-template>
         </p-step-panel>
       </p-step-panels>
