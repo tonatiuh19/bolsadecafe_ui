@@ -8,6 +8,7 @@ import {
   UserModel,
 } from '../../shared/store/states/landing.models';
 import { LandingActions } from '../../shared/store/actions';
+import { AuthService } from '@auth0/auth0-angular';
 
 @Component({
   selector: 'app-subscription-management',
@@ -43,7 +44,8 @@ export class SubscriptionManagementComponent implements OnInit, OnDestroy {
   constructor(
     private renderer: Renderer2,
     private store: Store,
-    private router: Router
+    private router: Router,
+    public auth: AuthService
   ) {}
 
   ngOnInit(): void {
@@ -151,6 +153,7 @@ export class SubscriptionManagementComponent implements OnInit, OnDestroy {
     alert(
       'Suscripción y usuario eliminados correctamente. -Solo para pruebas-'
     );
+    this.auth.logout();
     this.router.navigate(['']);
     // Optionally close modal
     (window as any).bootstrap.Modal.getInstance(
