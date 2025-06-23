@@ -130,3 +130,111 @@
   padding-top: 9rem !important;
   padding-bottom: 9.5rem !important;
 }
+
+.landing-hero-bg {
+  background-image: url("https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80"); /* Replace with your preferred image */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  min-height: 70vh;
+  width: 100%;
+  z-index: 1;
+}
+
+/* FAQ Accordion Styles */
+.faq-accordion .accordion-item {
+  border-radius: 1.5rem !important;
+  box-shadow: 0 4px 24px 0 rgba(28, 61, 136, 0.08);
+  margin-bottom: 1.5rem;
+  border: none !important;
+  background: #fff;
+}
+
+.faq-accordion .accordion-header {
+  font-family: "Montserrat", Arial, sans-serif;
+}
+
+.faq-accordion .accordion-button {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1c3d88;
+  background: #f7f9fc;
+  border-radius: 1.5rem !important;
+  padding: 1.25rem 1.5rem;
+  transition: background 0.2s, color 0.2s;
+  box-shadow: none;
+}
+
+.faq-accordion .accordion-button:not(.collapsed) {
+  background: #e3eafc;
+  color: #1c3d88;
+}
+
+.faq-accordion .accordion-body {
+  font-size: 1.1rem;
+  color: #333;
+  padding: 1.5rem;
+  border-radius: 0 0 1.5rem 1.5rem;
+  background: #f7f9fc;
+}
+
+.faq-accordion .accordion-button:focus {
+  box-shadow: 0 0 0 0.2rem #1c3d8833;
+}
+
+@media (max-width: 767.98px) {
+  .faq-accordion .accordion-button {
+    font-size: 1rem;
+    padding: 1rem 1.2rem;
+  }
+  .faq-accordion .accordion-body {
+    font-size: 1rem;
+    padding: 1rem;
+  }
+}
+
+.how-it-works-card-custom {
+  background: #f7f9fc;
+  border-radius: 2.5rem;
+  box-shadow: 0 4px 24px 0 rgba(28, 61, 136, 0.08);
+  padding: 2rem 1rem;
+  margin: 0 auto;
+}
+.how-it-works-title {
+  color: #1c3d88;
+  font-size: 2rem;
+  letter-spacing: 0.5px;
+}
+.how-it-works-step {
+  font-family: "Indie Flower", cursive, Arial, sans-serif;
+  font-size: 2.5rem;
+  color: #2361d8;
+  min-width: 2.5rem;
+  display: inline-block;
+  line-height: 1;
+}
+.how-it-works-step-title {
+  color: #1c3d88;
+  font-size: 1.25rem;
+}
+.how-it-works-step-desc {
+  color: #2d3a4a;
+  font-size: 1.1rem;
+}
+.how-it-works-img {
+  border-radius: 2rem;
+  box-shadow: 0 2px 16px 0 rgba(28, 61, 136, 0.08);
+}
+@media (max-width: 767.98px) {
+  .how-it-works-card-custom {
+    padding: 1rem 0.5rem;
+    border-radius: 1.2rem;
+  }
+  .how-it-works-title {
+    font-size: 1.2rem;
+  }
+  .how-it-works-step {
+    font-size: 2rem;
+  }
+}

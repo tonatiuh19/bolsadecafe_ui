@@ -1,0 +1,157 @@
+<div class="container py-5">
+  <h2 class="text-center display-huge mb-2">Nuestros Paquetes</h2>
+  <h3 class="text-center mb-5 fw-light">
+    Elige el que más se adapte a tu gusto y disfruta de un café excepcional en
+    la comodidad de tu hogar.
+  </h3>
+  <div class="row justify-content-center mt-5">
+    <!-- 250gr -->
+    <div class="col-12 col-md-3 mb-4">
+      <div class="card plan-card h-100 text-center border-0">
+        <div class="card-body">
+          <h5 class="fw-bold mt-3">250gr de café</h5>
+          <div class="text-uppercase mb-2">≈ 15 tazas</div>
+          <div class="display-5 fw-bold mb-1">
+            $199<span style="font-size: 1.2rem; font-weight: 400">/mes</span>
+          </div>
+          <hr />
+          <ul class="list-unstyled text-start mb-4">
+            <li class="mb-2">
+              <fa-icon [icon]="faCheck"></fa-icon> Variedad de molidos o en
+              grano
+            </li>
+            <li class="mb-2">
+              <fa-icon [icon]="faCheck"></fa-icon> Envío gratis a todo México
+            </li>
+            <li>
+              <fa-icon [icon]="faCheck"></fa-icon> Cancelación sin compromiso
+            </li>
+          </ul>
+          <button
+            *ngIf="!hasSubscription"
+            class="btn btn-primary rounded-pill px-4"
+            (click)="goToSuscribtionPage(1)"
+          >
+            Suscribete
+          </button>
+          <button
+            *ngIf="hasSubscription"
+            class="btn btn-primary rounded-pill px-4"
+            (click)="goToMySubscription()"
+          >
+            Actualizar suscripción
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- 500gr -->
+    <div class="col-12 col-md-3 mb-4">
+      <div class="card plan-card h-100 text-center border-0">
+        <div class="card-body">
+          <h5 class="fw-bold mt-3">500gr de café</h5>
+          <div class="text-uppercase mb-2">≈ 30 tazas</div>
+          <div class="display-5 fw-bold mb-1">
+            $299<span style="font-size: 1.2rem; font-weight: 400">/mes</span>
+          </div>
+          <hr />
+          <ul class="list-unstyled text-start mb-4">
+            <li class="mb-2">
+              <fa-icon [icon]="faCheck"></fa-icon> Variedad de molidos o en
+              grano
+            </li>
+            <li class="mb-2">
+              <fa-icon [icon]="faCheck"></fa-icon> Envío gratis a todo México
+            </li>
+            <li>
+              <fa-icon [icon]="faCheck"></fa-icon> Cancelación sin compromiso
+            </li>
+          </ul>
+          <button
+            *ngIf="!hasSubscription"
+            class="btn btn-primary rounded-pill px-4"
+            (click)="goToSuscribtionPage(2)"
+          >
+            Suscribete
+          </button>
+          <button
+            *ngIf="hasSubscription"
+            class="btn btn-primary rounded-pill px-4"
+            (click)="goToMySubscription()"
+          >
+            Actualizar suscripción
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- 1kg -->
+    <div class="col-12 col-md-3 mb-4">
+      <div class="card plan-card h-100 text-center border-0">
+        <div class="card-body">
+          <h5 class="fw-bold mt-3">1kg de café</h5>
+          <div class="text-uppercase mb-2">≈ 60 tazas</div>
+          <div class="display-5 fw-bold mb-1">
+            $399<span style="font-size: 1.2rem; font-weight: 400">/mes</span>
+          </div>
+          <hr />
+          <ul class="list-unstyled text-start mb-4">
+            <li class="mb-2">
+              <fa-icon [icon]="faCheck"></fa-icon> Variedad de molidos o en
+              grano
+            </li>
+            <li class="mb-2">
+              <fa-icon [icon]="faCheck"></fa-icon> Envío gratis a todo México
+            </li>
+            <li>
+              <fa-icon [icon]="faCheck"></fa-icon> Cancelación sin compromiso
+            </li>
+          </ul>
+          <button
+            *ngIf="!hasSubscription"
+            class="btn btn-primary rounded-pill px-4"
+            (click)="goToSuscribtionPage(3)"
+          >
+            Suscribete
+          </button>
+          <button
+            *ngIf="hasSubscription"
+            class="btn btn-primary rounded-pill px-4"
+            (click)="goToMySubscription()"
+          >
+            Actualizar suscripción
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- Empresa -->
+    <div class="col-12 col-md-3 mb-4">
+      <div class="card plan-card h-100 text-center border-0 bg-primary">
+        <div class="card-body">
+          <h5 class="fw-bold mt-3" style="color: #fff; font-size: 1.3rem">
+            Bolsa de Café para tu empresa
+          </h5>
+          <div class="display-6 fw-bold my-2" style="color: #fff">
+            Personalizado
+          </div>
+          <hr style="border-color: #fff" />
+          <ul class="list-unstyled text-start mb-4" style="color: #fff">
+            <li class="mb-2">
+              <fa-icon [icon]="faCheck" color="white"></fa-icon> Variedad de
+              molidos o en grano
+            </li>
+            <li class="mb-2">
+              <fa-icon [icon]="faCheck" color="white"></fa-icon> Cancelación sin
+              compromiso
+            </li>
+            <li>
+              <fa-icon [icon]="faCheck" color="white"></fa-icon> Envío gratis a
+              toda tu plantilla en México
+            </li>
+          </ul>
+          <button class="btn btn-outline-light rounded-pill px-4">
+            Contáctanos
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

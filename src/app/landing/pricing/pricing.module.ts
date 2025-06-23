@@ -5,6 +5,7 @@ import { CoffeeWizardModule } from './coffee-wizard/coffee-wizard.module';
 import { HeaderModule } from '../../shared/components/header/header.module';
 import { FooterModule } from '../../shared/components/footer/footer.module';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { PricingCardsModule } from './pricing-cards/pricing-cards.module';
 
 @NgModule({
   declarations: [PricingComponent],
@@ -14,6 +15,7 @@ import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
     FooterModule,
     CoffeeWizardModule,
     FontAwesomeModule,
+    PricingCardsModule,
   ],
   exports: [PricingComponent],
 })

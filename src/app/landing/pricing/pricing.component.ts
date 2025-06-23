@@ -14,7 +14,7 @@ import {
   UserModel,
   WizardModel,
 } from '../../shared/store/states/landing.models';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { LandingActions } from '../../shared/store/actions';
 
 @Component({
@@ -40,15 +40,35 @@ export class PricingComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   private lastSuscribtionPage = false;
 
+  private manualSubscriptionPage = false;
+
   private unsubscribe$ = new Subject<void>();
 
   constructor(
     private renderer: Renderer2,
     private store: Store,
-    private router: Router
+    private router: Router,
+    private route: ActivatedRoute
   ) {}
 
   ngOnInit() {
+    this.route.queryParams.subscribe((params) => {
+      const type = params['type'] ? +params['type'] : 0;
+      if (type !== 0) {
+        this.subsType = type;
+        this.isSuscribtionPage = true;
+        this.manualSubscriptionPage = true;
+
+        this.router.navigate([], {
+          relativeTo: this.route,
+          queryParams: {},
+          replaceUrl: true,
+        });
+      } else {
+        this.manualSubscriptionPage = false;
+      }
+    });
+
     this.applyBodyStyles();
     this.store.dispatch(
       LandingActions.insertVisitor({
@@ -59,8 +79,10 @@ export class PricingComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.selectLandingState$
       .pipe(takeUntil(this.unsubscribe$))
       .subscribe((state: LandingState) => {
-        this.subsType = state.wizard.subsType;
-        this.isSuscribtionPage = this.subsType !== 0;
+        if (!this.manualSubscriptionPage) {
+          this.subsType = state.wizard.subsType;
+          this.isSuscribtionPage = this.subsType !== 0;
+        }
         this.wizard = state.wizard;
         this.user = state.user;
 

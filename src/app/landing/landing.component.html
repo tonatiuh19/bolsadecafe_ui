@@ -1,6 +1,6 @@
 <app-header [isMain]="true"></app-header>
 <section
-  class="d-flex justify-content-center align-items-center main-container pt-5"
+  class="d-flex justify-content-center align-items-center main-container pt-5 landing-hero-bg"
   id="goTop"
 >
   <div class="container py-vh-4 position-relative mt-5 px-vw-5 text-center">
@@ -8,21 +8,10 @@
       class="row d-flex align-items-center justify-content-center py-vh-5 mx-auto"
       style="width: 70%"
     >
-      <!-- Image column: appears first on mobile, second on desktop -->
       <div
-        class="col-12 col-md-6 d-flex justify-content-center align-items-center order-1 order-md-2 mb-4 mb-md-0"
+        class="col-12 col-md-6 text-center text-md-center d-flex flex-column justify-content-center align-items-center align-items-md-center order-2 order-md-1"
       >
-        <img
-          src="https://i.giphy.com/qNTlpxfsvcazdFC6JW.webp"
-          alt="Café animado"
-          class="img-fluid landing-hero-img"
-        />
-      </div>
-      <!-- Text column: appears second on mobile, first on desktop -->
-      <div
-        class="col-12 col-md-6 text-center text-md-end d-flex flex-column justify-content-center align-items-center align-items-md-end order-2 order-md-1"
-      >
-        <h1 class="display-huge mt-3 mb-3 lh-1 fw-bold">
+        <h1 class="display-huge mt-3 mb-3 lh-1 fw-bold title_taz">
           No te vuelvas a quedar sin café
         </h1>
         <p class="lead text-secondary handwriting-animation">
@@ -36,8 +25,18 @@
   </div>
 </section>
 <section class="container py-5">
-  <div class="row">
+  <h1 class="text-center display-huge mt-3 mb-5 lh-1 fw-bold title_taz">
+    ¿Por qué elegir nuestra suscripción?
+  </h1>
+  <div class="row mt-5">
     <div class="col-md-4 mb-4 text-center">
+      <div class="mb-3">
+        <img
+          src="https://garbrix.com/bdec/assets/images/mexico.svg"
+          alt="Café icon"
+          style="height: 56px"
+        />
+      </div>
       <h2 class="mb-3 display-huge">Solo el Mejor Café</h2>
       <p>
         Recibe café 100% mexicano en la puerta de tu casa cada mes, sin
@@ -45,6 +44,13 @@
       </p>
     </div>
     <div class="col-md-4 mb-4 text-center">
+      <div class="mb-3">
+        <img
+          src="https://garbrix.com/bdec/assets/images/cafetal.svg"
+          alt="Café icon"
+          style="height: 56px"
+        />
+      </div>
       <h2 class="mb-3 display-huge">Tostado Fresco, Siempre.</h2>
       <p>
         Seleccionamos el mejor café para que disfrutes de una experiencia<br />
@@ -52,6 +58,13 @@
       </p>
     </div>
     <div class="col-md-4 mb-4 text-center">
+      <div class="mb-3">
+        <img
+          src="https://garbrix.com/bdec/assets/images/localstore.svg"
+          alt="Café icon"
+          style="height: 56px"
+        />
+      </div>
       <h2 class="mb-3 display-huge">Apoya Negocios Locales</h2>
       <p>
         Cada pedido apoya directamente a negocios locales que ponen su corazón
@@ -61,186 +74,76 @@
     </div>
   </div>
 </section>
-<section class="py-5 bg-primary">
-  <h2 class="text-center fw-bold mb-5 text-white pt-5">
-    ¿Cómo funciona mi suscripción de bolsa de café?
-  </h2>
-  <div class="container pb-5">
-    <div
-      class="d-flex flex-column flex-md-row justify-content-center align-items-center gap-0"
-    >
-      <!-- Step 1 -->
-      <div
-        class="step-card bg-white p-4 rounded-4 text-center shadow-sm mx-2 flex-grow-1"
-      >
-        <!-- ...step 1 content... -->
-        <div
-          class="step-number-icon mb-3 d-flex justify-content-center align-items-center gap-2"
-        >
-          <img
-            src="https://garbrix.com/bdec/assets/images/coffee-bean.svg"
-            alt="Tipo de molido"
-            class="step-icon"
-            style="width: 48px; height: 48px"
-          />
+<section class="d-flex justify-content-center align-items-center my-5">
+  <div class="how-it-works-card-custom w-100" style="max-width: 1200px">
+    <div class="row align-items-center">
+      <div class="col-md-7 px-5 py-4">
+        <h1 class="text-center display-huge mt-3 mb-5 lh-1 fw-bold title_taz">
+          ¿Cómo funciona mi suscripción de bolsa de café?
+        </h1>
+        <div class="mb-4 d-flex align-items-start">
+          <span class="how-it-works-step me-4">1</span>
+          <div>
+            <span class="fw-bold how-it-works-step-title"
+              >Define el tipo de molido</span
+            ><br />
+            <span class="how-it-works-step-desc"
+              >Elige cómo te gusta tu café: en grano o molido a tu
+              preferencia</span
+            >
+          </div>
         </div>
-        <h5 class="fw-bold mb-2">Define el tipo de molido</h5>
-        <p class="mb-0 text-secondary">
-          Elige cómo te gusta tu café: en grano o molido a tu preferencia.
-        </p>
+        <div class="mb-4 d-flex align-items-start">
+          <span class="how-it-works-step me-4">2</span>
+          <div>
+            <span class="fw-bold how-it-works-step-title"
+              >¿Dónde entregamos tu café?</span
+            ><br />
+            <span class="how-it-works-step-desc"
+              >Indica la dirección donde quieres recibir tu café cada mes.</span
+            >
+          </div>
+        </div>
+        <div class="mb-4 d-flex align-items-start">
+          <span class="how-it-works-step me-4">3</span>
+          <div>
+            <span class="fw-bold how-it-works-step-title"
+              >¿Quién recibe el café?</span
+            ><br />
+            <span class="how-it-works-step-desc"
+              >Cuéntanos quién recibirá el café<br />para asegurarnos de que
+              llegue a la persona correcta.</span
+            >
+          </div>
+        </div>
       </div>
-      <!-- Arrow 1: right on desktop, down on mobile -->
-      <fa-icon
-        *ngIf="true"
-        class="d-none d-md-inline mx-2"
-        [icon]="faArrowRight"
-        size="2x"
-        style="color: #fff; vertical-align: middle"
-      ></fa-icon>
-      <fa-icon
-        *ngIf="true"
-        class="d-inline d-md-none my-2"
-        [icon]="faArrowDown"
-        size="2x"
-        style="color: #fff; vertical-align: middle"
-      ></fa-icon>
-      <!-- Step 2 -->
-      <div
-        class="step-card bg-white p-4 rounded-4 text-center shadow-sm mx-2 flex-grow-1"
-      >
-        <!-- ...step 2 content... -->
-        <div
-          class="step-number-icon mb-3 d-flex justify-content-center align-items-center gap-2"
-        >
-          <img
-            src="https://garbrix.com/bdec/assets/images/delivery.svg"
-            alt="Entrega"
-            class="step-icon"
-            style="width: 48px; height: 48px"
-          />
-        </div>
-        <h5 class="fw-bold mb-2">¿Dónde entregamos tu café?</h5>
-        <p class="mb-0 text-secondary">
-          Indica la dirección donde quieres recibir tu café cada mes.
-        </p>
-      </div>
-      <!-- Arrow 2: right on desktop, down on mobile -->
-      <fa-icon
-        *ngIf="true"
-        class="d-none d-md-inline mx-2"
-        [icon]="faArrowRight"
-        size="2x"
-        style="color: #fff; vertical-align: middle"
-      ></fa-icon>
-      <fa-icon
-        *ngIf="true"
-        class="d-inline d-md-none my-2"
-        [icon]="faArrowDown"
-        size="2x"
-        style="color: #fff; vertical-align: middle"
-      ></fa-icon>
-      <!-- Step 3 -->
-      <div
-        class="step-card bg-white p-4 rounded-4 text-center shadow-sm mx-2 flex-grow-1"
-      >
-        <!-- ...step 3 content... -->
-        <div
-          class="step-number-icon mb-3 d-flex justify-content-center align-items-center gap-2"
-        >
-          <img
-            src="https://garbrix.com/bdec/assets/images/gift-box.svg"
-            alt="Quién recibe"
-            class="step-icon"
-            style="width: 48px; height: 48px"
-          />
-        </div>
-        <h5 class="fw-bold mb-2">¿Quién recibe el café?</h5>
-        <p class="mb-0 text-secondary">
-          Cuéntanos quién recibirá el café para asegurarnos de que llegue a la
-          persona correcta.
-        </p>
+      <div class="col-md-5 text-center py-4">
+        <img
+          src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=600&q=80"
+          alt="Bolsa de café"
+          class="img-fluid how-it-works-img"
+          style="max-width: 350px; border-radius: 2rem"
+        />
       </div>
     </div>
-    <p class="text-center mt-4 text-white-50">
-      La entrega es mensual por defecto, ¡así nunca te quedas sin café!
-    </p>
   </div>
 </section>
 <section class="py-5-subs-cards">
   <div class="container py-5">
-    <h2 class="text-center fw-bold mb-5">Elige tu suscripción de café</h2>
+    <h2 class="text-center display-huge mt-3 mb-5 lh-1 fw-bold title_taz">
+      Elige tu suscripción de café
+    </h2>
     <div class="row justify-content-center g-4">
-      <!-- 250gr -->
-      <div class="col-12 col-md-4">
-        <div class="subscription-card text-center p-4 rounded-4 h-100 mx-auto">
-          <h3 class="fw-bold mb-1">Bolsa de Café</h3>
-          <div class="fs-2 mb-2">250gr</div>
-          <hr />
-          <div class="display-3 fw-bold mb-3">$199</div>
-          <ul class="list-unstyled mb-4">
-            <li class="mb-2">
-              <fa-icon [icon]="faMugHot"></fa-icon> Café molido o en grano
-            </li>
-            <li>
-              <fa-icon [icon]="faTruck"></fa-icon> Envío gratis a todo México
-            </li>
-          </ul>
-          <button class="btn btn-primary px-5 py-2 rounded-pill">
-            Suscribete
-          </button>
-        </div>
-      </div>
-      <!-- 500gr -->
-      <div class="col-12 col-md-4">
-        <div class="subscription-card text-center p-4 rounded-4 h-100 mx-auto">
-          <h3 class="fw-bold mb-1">Bolsa de Café</h3>
-          <div class="fs-2 mb-2">500gr</div>
-          <hr />
-          <div class="display-3 fw-bold mb-3">$299</div>
-          <ul class="list-unstyled mb-4">
-            <li class="mb-2">
-              <fa-icon [icon]="faMugHot"></fa-icon> Café molido o en grano
-            </li>
-            <li>
-              <fa-icon [icon]="faTruck"></fa-icon> Envío gratis a todo México
-            </li>
-          </ul>
-          <button class="btn btn-primary px-5 py-2 rounded-pill">
-            Suscribete
-          </button>
-        </div>
-      </div>
-      <!-- 1kg -->
-      <div class="col-12 col-md-4">
-        <div class="subscription-card text-center p-4 rounded-4 h-100 mx-auto">
-          <h3 class="fw-bold mb-1">Bolsa de Café</h3>
-          <div class="fs-2 mb-2">1kg</div>
-          <hr />
-          <div class="display-3 fw-bold mb-3">$399</div>
-          <ul class="list-unstyled mb-4">
-            <li class="mb-2">
-              <fa-icon [icon]="faMugHot"></fa-icon> Café molido o en grano
-            </li>
-            <li>
-              <fa-icon [icon]="faTruck"></fa-icon> Envío gratis a todo México
-            </li>
-          </ul>
-          <button class="btn btn-primary px-5 py-2 rounded-pill">
-            Suscribete
-          </button>
-        </div>
-      </div>
+      <app-pricing-cards [isMain]="true"></app-pricing-cards>
     </div>
   </div>
 </section>
-<section class="py-5 bg-primary">
+<section class="py-5">
   <div class="container py-5">
-    <h2 class="text-center fw-bold mb-2 text-white">
+    <h2 class="text-center fw-bold mb-2 title_taz">
       ¿Tienes dudas sobre tu suscripción?
     </h2>
-    <p class="text-center text-white-50 mb-4">
-      Estas respuestas pueden ayudarte
-    </p>
+    <p class="text-center mb-4">Estas respuestas pueden ayudarte</p>
     <div
       class="accordion faq-accordion mx-auto"
       id="faqAccordion"
@@ -363,4 +266,4 @@
     </p>
   </div>
 </section>
-<app-footer [isMain]="true"></app-footer>
+<app-footer [isMain]="false"></app-footer>
