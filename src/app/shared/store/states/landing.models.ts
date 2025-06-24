@@ -9,7 +9,7 @@ export interface LandingState {
 }
 
 export interface UserModel {
-  id_user: number;
+  id: number;
   email: string;
   email_verified: number;
   picture: string;
@@ -56,10 +56,10 @@ export interface RoastModel {
 }
 
 export interface SubscriptionInfo {
-  bdec_subscription_id: number;
-  bdec_subscription_user_id: number;
-  bdec_subscription_type: number;
-  bdec_subscription_stripe_id: string;
+  id: number;
+  user_id: number;
+  type: number;
+  stripe_id: string;
   stripe_info: any;
 }
 

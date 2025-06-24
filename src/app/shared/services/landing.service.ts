@@ -29,12 +29,12 @@ export class LandingService {
   ): Observable<any> {
     return this.httpClient
       .post(this.GET_LOGIN, {
-        bdec_user_email: email,
-        bdec_user_email_verified: email_verified,
-        bdec_user_name: given_name,
-        bdec_user_last_name: family_name,
-        bdec_user_picture: picture,
-        bdec_user_phone: phone,
+        email: email,
+        email_verified: email_verified,
+        name: given_name,
+        last_name: family_name,
+        picture: picture,
+        phone: phone,
       })
       .pipe(
         map((response) => {

@@ -4,7 +4,7 @@ export const LANDING_FEATURE_KEY = 'landingBolsaDeCafe';
 
 export const initialLandingState: LandingState = {
   user: {
-    id_user: 0,
+    id: 0,
     email: '',
     email_verified: 0,
     picture: '',

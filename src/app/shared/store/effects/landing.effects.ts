@@ -83,7 +83,7 @@ export class LandingEffects {
           .subscribeCustomerToPlan(
             state.user.stripe_id,
             String(state.wizard.subsType),
-            state.user.id_user,
+            state.user.id,
             state.wizard.roast,
             state.wizard.address,
             state.wizard.recipient

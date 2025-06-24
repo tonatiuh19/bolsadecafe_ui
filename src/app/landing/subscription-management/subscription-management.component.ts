@@ -59,10 +59,10 @@ export class SubscriptionManagementComponent implements OnInit, OnDestroy {
       .pipe(take(1)) // Only take the first value after refresh
       .subscribe((subscribtion: SubscriptionInfo | null) => {
         console.log('Subscription data:', subscribtion);
-        if (subscribtion && subscribtion.bdec_subscription_stripe_id) {
+        if (subscribtion && subscribtion.stripe_id) {
           this.store.dispatch(
             LandingActions.retrieveSubscription({
-              stripe_subscription_id: subscribtion.bdec_subscription_stripe_id,
+              stripe_subscription_id: subscribtion.stripe_id,
             })
           );
         }
@@ -147,7 +147,7 @@ export class SubscriptionManagementComponent implements OnInit, OnDestroy {
     //TODO: Remove this when ux is ready
     this.store.dispatch(
       LandingActions.deleteUserAndSubscription({
-        user_id: this.user.id_user,
+        user_id: this.user.id,
       })
     );
     alert(
