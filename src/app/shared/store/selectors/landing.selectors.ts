@@ -24,3 +24,8 @@ export const selectSubscription = createSelector(
   selectUser,
   (user) => user.subscription
 );
+
+export const selectRoastTypes = createSelector(
+  selectLandingState,
+  (state: LandingState) => state.roastTypes
+);

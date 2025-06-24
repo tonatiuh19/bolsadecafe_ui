@@ -229,6 +229,13 @@
     padding-bottom: 0.5rem !important;
     margin-bottom: 0 !important;
   }
+
+  .form-control:focus {
+    outline: none;
+    border-color: #7da0df;
+    box-shadow: 0 0 0 1px #b6c6e6;
+    border-radius: 1.5rem;
+  }
 }
 
 .spin {

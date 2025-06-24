@@ -13,6 +13,7 @@ export class LandingService {
   public SUBSCRIBE_CUSTOMER = `${DOMAIN}/subscribe_customer.php`;
   public RETRIVE_SUB = `${DOMAIN}/retrive_subscription_by_id.php`;
   public INSERT_VISITOR = `${DOMAIN}/insertVisitor.php`;
+  public GET_COFFEE_ROASTS = `${DOMAIN}/getCoffeeTypes.php`;
 
   //TODO: Remove this when ux is ready
   public DELETE_USER_AND_SUB = `${DOMAIN}/deleteUserAndSubscription.php`;
@@ -94,6 +95,12 @@ export class LandingService {
       .post(this.RETRIVE_SUB, {
         stripe_subscription_id,
       })
+      .pipe(map((response) => response));
+  }
+
+  public getCoffeeRoasts(): Observable<any> {
+    return this.httpClient
+      .post(this.GET_COFFEE_ROASTS, {})
       .pipe(map((response) => response));
   }
 

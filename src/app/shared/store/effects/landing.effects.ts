@@ -132,6 +132,22 @@ export class LandingEffects {
     )
   );
 
+  getCoffeeRoasts$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(LandingActions.getCoffeeRoasts),
+      switchMap(() =>
+        this.landingService.getCoffeeRoasts().pipe(
+          map((response) =>
+            LandingActions.getCoffeeRoastsSuccess({ roasts: response })
+          ),
+          catchError((error) =>
+            of(LandingActions.getCoffeeRoastsFailure({ error }))
+          )
+        )
+      )
+    )
+  );
+
   //TODO: Remove this when ux is ready
   deleteUserAndSubscription$ = createEffect(() =>
     this.actions$.pipe(

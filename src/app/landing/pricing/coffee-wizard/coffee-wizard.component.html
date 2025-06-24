@@ -6,7 +6,7 @@
       <div class="row">
         <div class="col-sm-12 text-center">
           <ng-container *ngIf="subsType >= 1 && subsType <= 3">
-            <h2 class="display-huge mb-2">
+            <h2 class="display-huge mb-2 title_taz">
               {{ planInfo[subsType - 1].label }}
             </h2>
             <h3 class="mb-5 fw-light">
@@ -43,24 +43,22 @@
               <div class="cont-main">
                 <div
                   class="cont-checkbox"
-                  *ngFor="let option of roastOptions; index as i"
+                  *ngFor="let option of coffeeTypes; index as i"
                 >
                   <input
                     type="radio"
                     name="roast"
                     [id]="'roast-' + i"
-                    [value]="option.id_product_f_cuerpo_types"
-                    (change)="selectRoast(option.id_product_f_cuerpo_types)"
-                    [checked]="
-                      selectedRoast === option.id_product_f_cuerpo_types
-                    "
+                    [value]="option.id"
+                    (change)="selectRoast(option.id)"
+                    [checked]="selectedRoast === option.id"
                   />
                   <label [for]="'roast-' + i">
-                    <img [src]="option.image_radio" [alt]="option.value" />
+                    <img [src]="option.svg" [alt]="option.value" />
                     <div class="info">
                       {{ option.value }}
                       <div class="subtitle text-muted small">
-                        {{ option.subtitle }}
+                        {{ option.machine }}
                       </div>
                     </div>
                   </label>
@@ -150,7 +148,9 @@
                   </div>
                 </div>
                 <div class="form-group mb-3">
-                  <label for="city" class="mb-1">Referencia:</label>
+                  <label for="city" class="mb-1"
+                    >Referencia: <span class="text-danger">*</span></label
+                  >
                   <input
                     type="text"
                     id="reference"

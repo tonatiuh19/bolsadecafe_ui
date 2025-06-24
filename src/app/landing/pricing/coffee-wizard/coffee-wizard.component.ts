@@ -1,5 +1,6 @@
 import {
   AfterViewChecked,
+  ChangeDetectorRef,
   Component,
   EventEmitter,
   HostListener,
@@ -19,6 +20,7 @@ import {
   faLock,
 } from '@fortawesome/free-solid-svg-icons';
 import {
+  RoastModel,
   UserModel,
   WizardModel,
 } from '../../../shared/store/states/landing.models';
@@ -29,6 +31,8 @@ import { Title } from '@angular/platform-browser';
 import { AuthService } from '@auth0/auth0-angular';
 import { Stripe, StripeElements, StripeCardElement } from '@stripe/stripe-js';
 import { StripeService } from '../../../shared/services/stripe.service';
+import { fromLanding } from '../../../shared/store/selectors';
+import { Subject, take, takeUntil } from 'rxjs';
 
 @Component({
   selector: 'app-coffee-wizard',
@@ -44,11 +48,16 @@ export class CoffeeWizardComponent
   @Input() user!: UserModel;
   @Output() cancelWizard = new EventEmitter<void>();
 
+  public selectRoastTypes$ = this.store.select(fromLanding.selectRoastTypes);
+
   planInfo = [
     { label: '250gr de café', price: 199 },
     { label: '500gr de café', price: 299 },
     { label: '1kg de café', price: 399 },
   ];
+
+  coffeeTypes!: RoastModel[];
+
   // Default selected by id
   selectedRoast: number = 1;
   addressForm: FormGroup;
@@ -101,6 +110,8 @@ export class CoffeeWizardComponent
 
   private firstRender = true;
 
+  private unsubscribe$ = new Subject<void>();
+
   constructor(
     private fb: FormBuilder,
     private renderer: Renderer2,
@@ -108,14 +119,15 @@ export class CoffeeWizardComponent
     private router: Router,
     private titleService: Title,
     public auth: AuthService,
-    private stripeService: StripeService
+    private stripeService: StripeService,
+    private cdr: ChangeDetectorRef
   ) {
     this.addressForm = this.fb.group({
       address: ['', Validators.required],
       extNumber: ['', Validators.required],
       intNumber: [''],
       city: ['', Validators.required],
-      reference: [''],
+      reference: ['', Validators.required],
       state: ['', Validators.required],
       zip: ['', Validators.required],
     });
@@ -137,10 +149,17 @@ export class CoffeeWizardComponent
   ngOnInit() {
     this.isProcessingPayment = false;
 
+    this.selectRoastTypes$
+      .pipe(takeUntil(this.unsubscribe$))
+      .subscribe((roastTypes: RoastModel[]) => {
+        this.coffeeTypes = roastTypes;
+        this.cdr.detectChanges();
+      });
+
     if (this.wizard) {
-      if (this.wizard.roast.id_product_f_cuerpo_types) {
-        this.selectRoast(this.wizard.roast.id_product_f_cuerpo_types);
-        this.selectedRoast = this.wizard.roast.id_product_f_cuerpo_types;
+      if (this.wizard.roast.id) {
+        this.selectRoast(this.wizard.roast.id);
+        this.selectedRoast = this.wizard.roast.id;
       }
       if (this.wizard.address.address) {
         this.addressForm.patchValue({
@@ -176,6 +195,8 @@ export class CoffeeWizardComponent
   }
 
   ngOnDestroy() {
+    this.unsubscribe$.next();
+    this.unsubscribe$.complete();
     this.removeBodyStyles();
   }
 
@@ -232,9 +253,7 @@ export class CoffeeWizardComponent
   }
 
   get selectedRoastOption() {
-    return this.roastOptions.find(
-      (o) => o.id_product_f_cuerpo_types === this.selectedRoast
-    );
+    return this.coffeeTypes.find((o) => o.id === this.selectedRoast);
   }
 
   nextStep(activateCallback: (index: number) => void, index: number) {
@@ -264,10 +283,10 @@ export class CoffeeWizardComponent
       this.store.dispatch(
         LandingActions.setRoast({
           roast: {
-            id_product_f_cuerpo_types: this.selectedRoast,
+            id: this.selectedRoast,
             value: this.selectedRoastOption?.value ?? '',
-            subtitle: this.selectedRoastOption?.subtitle ?? '',
-            image_radio: this.selectedRoastOption?.image_radio ?? '',
+            machine: this.selectedRoastOption?.machine ?? '',
+            svg: this.selectedRoastOption?.svg ?? '',
           },
           subsType: this.subsType,
         })

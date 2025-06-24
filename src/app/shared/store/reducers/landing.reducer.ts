@@ -246,6 +246,35 @@ export const LandingReducer = createRehydrateReducer(
       };
     }
   ),
+  on(LandingActions.getCoffeeRoasts, (state: LandingState) => {
+    return {
+      ...state,
+      isLoading: true,
+      isError: false,
+    };
+  }),
+  on(
+    LandingActions.getCoffeeRoastsSuccess,
+    (state: LandingState, { roasts }) => {
+      return {
+        ...state,
+        roastTypes: roasts,
+        isLoading: false,
+        isError: false,
+      };
+    }
+  ),
+  on(
+    LandingActions.getCoffeeRoastsFailure,
+    (state: LandingState, { error }: any) => {
+      return {
+        ...state,
+        isLoading: false,
+        isError: true,
+        errorResponse: error,
+      };
+    }
+  ),
   on(
     LandingActions.deleteUserAndSubscription,
     (state: LandingState, { user_id }) => {

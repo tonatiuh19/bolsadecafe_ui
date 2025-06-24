@@ -19,10 +19,10 @@ export const initialLandingState: LandingState = {
   },
   wizard: {
     roast: {
-      id_product_f_cuerpo_types: 0,
+      id: 0,
       value: '',
-      subtitle: '',
-      image_radio: '',
+      machine: '',
+      svg: '',
     },
     address: {
       address: '',
@@ -42,6 +42,7 @@ export const initialLandingState: LandingState = {
     isPaid: false,
     isInvalidPayment: false,
   },
+  roastTypes: [],
   isLoading: false,
   isError: false,
 };

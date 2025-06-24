@@ -43,6 +43,7 @@ export class HeaderComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
+    this.store.dispatch(LandingActions.getCoffeeRoasts());
     this.selectLandingState$
       .pipe(takeUntil(this.unsubscribe$))
       .subscribe((state) => {
@@ -75,6 +76,22 @@ export class HeaderComponent implements OnInit {
 
   goToMySubscription() {
     this.router.navigate(['mi-suscripcion']);
+  }
+
+  goToMainPage() {
+    const isLanding =
+      this.router.url === '/' || this.router.url.startsWith('/landing');
+    if (isLanding) {
+      // Scroll to top anchor
+      const topElement = document.getElementById('goTop');
+      if (topElement) {
+        topElement.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } else {
+      this.router.navigate(['']);
+    }
   }
 
   login(): void {

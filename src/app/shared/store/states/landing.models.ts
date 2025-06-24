@@ -3,6 +3,7 @@ export const DOMAIN = 'https://garbrix.com/bdec/api';
 export interface LandingState {
   user: UserModel;
   wizard: WizardModel;
+  roastTypes: RoastModel[];
   isLoading?: boolean;
   isError?: boolean;
   errorResponse?: string;
@@ -49,10 +50,10 @@ export interface RecipientModel {
 }
 
 export interface RoastModel {
-  id_product_f_cuerpo_types: number;
+  id: number;
   value: string;
-  subtitle: string;
-  image_radio: string;
+  machine: string;
+  svg: string;
 }
 
 export interface SubscriptionInfo {

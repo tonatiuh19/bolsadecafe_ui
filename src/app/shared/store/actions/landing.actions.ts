@@ -107,6 +107,16 @@ export const insertVisitorFailure = createAction(
   props<{ error: any }>()
 );
 
+export const getCoffeeRoasts = createAction(`${actor} Get Coffee Roasts Start`);
+export const getCoffeeRoastsSuccess = createAction(
+  `${actor} Get Coffee Roasts Success`,
+  props<{ roasts: RoastModel[] }>()
+);
+export const getCoffeeRoastsFailure = createAction(
+  `${actor} Get Coffee Roasts Failure`,
+  props<{ error: any }>()
+);
+
 //TODO: Remove this when ux is ready
 export const deleteUserAndSubscription = createAction(
   `${actor} Delete User and Subscription`,
