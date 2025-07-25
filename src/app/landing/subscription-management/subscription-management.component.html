@@ -3,7 +3,9 @@
   <div class="management-container pt-5">
     <div class="row">
       <div class="col-12 text-center mb-4">
-        <h1 class="display-4 fw-bold pt-5">Gestión de tu Suscripción</h1>
+        <h1 class="display-4 display-huge lh-1 fw-bold title_taz pt-5">
+          Gestión de tu Suscripción
+        </h1>
       </div>
     </div>
     <div class="row g-4">
@@ -12,7 +14,9 @@
         <div class="card h-100">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
-              <h5 class="card-title mb-0">Detalles de la suscripción</h5>
+              <h5 class="card-title mb-0 title_taz">
+                Detalles de la suscripción
+              </h5>
               <button
                 class="btn btn-link btn-sm"
                 (click)="updateSubscription()"
@@ -36,7 +40,7 @@
       <div class="col-12 col-md-6">
         <div class="card h-100">
           <div class="card-body">
-            <h5 class="card-title mb-3">Datos de envío y pago</h5>
+            <h5 class="card-title mb-3 title_taz">Datos de envío y pago</h5>
             <ul class="list-unstyled">
               <li><strong>Recibe:</strong> {{ subscription.recipient }}</li>
               <li><strong>Dirección:</strong> {{ subscription.address }}</li>
@@ -94,7 +98,9 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="cancelModalLabel">Confirmar cancelación</h5>
+        <h5 class="modal-title title_taz" id="cancelModalLabel">
+          Confirmar cancelación
+        </h5>
         <button
           type="button"
           class="btn-close"

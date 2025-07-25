@@ -14,6 +14,7 @@ export class LandingService {
   public RETRIVE_SUB = `${DOMAIN}/retrive_subscription_by_id.php`;
   public INSERT_VISITOR = `${DOMAIN}/insertVisitor.php`;
   public GET_COFFEE_ROASTS = `${DOMAIN}/getCoffeeTypes.php`;
+  public VALIDATE_COUPON = `${DOMAIN}/validate_coupon.php`;
 
   //TODO: Remove this when ux is ready
   public DELETE_USER_AND_SUB = `${DOMAIN}/deleteUserAndSubscription.php`;
@@ -58,12 +59,14 @@ export class LandingService {
 
   public attachPaymentMethodToCustomer(
     paymentMethodId: string,
-    customerId: string
+    customerId: string,
+    couponCode?: string | null
   ): Observable<any> {
     return this.httpClient
       .post(this.ATTACH_PAYMENT_METHOD, {
         paymentMethodId,
         customerId,
+        couponCode,
       })
       .pipe(map((response) => response));
   }
@@ -74,7 +77,8 @@ export class LandingService {
     userId: string | number,
     roast: any,
     address: any,
-    recipient: any
+    recipient: any,
+    couponCode?: string | null
   ): Observable<any> {
     return this.httpClient
       .post(this.SUBSCRIBE_CUSTOMER, {
@@ -84,6 +88,7 @@ export class LandingService {
         roast,
         address,
         recipient,
+        couponCode,
       })
       .pipe(map((response) => response));
   }
@@ -111,5 +116,23 @@ export class LandingService {
         user_id,
       })
       .pipe(map((response) => response));
+  }
+
+  public validateCoupon(
+    couponCode: string,
+    productId?: string,
+    priceId?: string
+  ): Observable<any> {
+    return this.httpClient
+      .post(this.VALIDATE_COUPON, {
+        couponCode: couponCode,
+        productId: productId,
+        priceId: priceId,
+      })
+      .pipe(
+        map((response) => {
+          return response;
+        })
+      );
   }
 }

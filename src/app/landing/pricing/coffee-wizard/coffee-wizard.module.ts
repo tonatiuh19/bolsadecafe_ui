@@ -5,6 +5,7 @@ import { ReactiveFormsModule } from '@angular/forms';
 import { StepperModule } from 'primeng/stepper';
 import { ButtonModule } from 'primeng/button';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { FormsModule } from '@angular/forms';
 
 @NgModule({
   declarations: [CoffeeWizardComponent],
@@ -14,6 +15,7 @@ import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
     StepperModule,
     ButtonModule,
     FontAwesomeModule,
+    FormsModule,
   ],
   exports: [CoffeeWizardComponent],
 })

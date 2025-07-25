@@ -29,3 +29,12 @@ export const selectRoastTypes = createSelector(
   selectLandingState,
   (state: LandingState) => state.roastTypes
 );
+
+export const selectCouponState = createSelector(
+  selectLandingState,
+  (state: LandingState) => ({
+    appliedCoupon: state.appliedCoupon,
+    couponValidating: state.couponValidating,
+    couponError: state.couponError,
+  })
+);

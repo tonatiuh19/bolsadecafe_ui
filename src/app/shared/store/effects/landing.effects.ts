@@ -59,9 +59,13 @@ export class LandingEffects {
   attachPaymentMethod$ = createEffect(() =>
     this.actions$.pipe(
       ofType(LandingActions.attachPaymentMethod),
-      switchMap(({ paymentMethodId, customerId }) =>
+      switchMap(({ paymentMethodId, customerId, couponCode }) =>
         this.landingService
-          .attachPaymentMethodToCustomer(paymentMethodId, customerId)
+          .attachPaymentMethodToCustomer(
+            paymentMethodId,
+            customerId,
+            couponCode
+          )
           .pipe(
             map((response) =>
               LandingActions.attachPaymentMethodSuccess({ response })
@@ -159,6 +163,30 @@ export class LandingEffects {
           ),
           catchError((error) =>
             of(LandingActions.deleteUserAndSubscriptionFailure({ error }))
+          )
+        )
+      )
+    )
+  );
+
+  validateCoupon$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(LandingActions.validateCoupon),
+      switchMap(({ couponCode, productId, priceId }) =>
+        this.landingService.validateCoupon(couponCode, productId, priceId).pipe(
+          map((response) => {
+            if (response.success) {
+              return LandingActions.validateCouponSuccess({
+                coupon: response.coupon,
+              });
+            } else {
+              return LandingActions.validateCouponFailure({
+                error: response.error,
+              });
+            }
+          }),
+          catchError((error) =>
+            of(LandingActions.validateCouponFailure({ error: error.message }))
           )
         )
       )

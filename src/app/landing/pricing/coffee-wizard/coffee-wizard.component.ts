@@ -50,6 +50,8 @@ export class CoffeeWizardComponent
 
   public selectRoastTypes$ = this.store.select(fromLanding.selectRoastTypes);
 
+  public selectCouponState$ = this.store.select(fromLanding.selectCouponState);
+
   planInfo = [
     { label: '250gr de café', price: 199 },
     { label: '500gr de café', price: 299 },
@@ -103,6 +105,13 @@ export class CoffeeWizardComponent
   public isStripeError = false;
   public stripeErrorMessage = '';
 
+  // Add coupon-related properties
+  public couponCode: string = '';
+  public isCouponValid: boolean | null = null;
+  public couponError: string = '';
+  public isValidatingCoupon: boolean = false;
+  public appliedCoupon: any = null;
+
   private stripe: Stripe | null = null;
   private elements: StripeElements | null = null;
   private card: StripeCardElement | null = null;
@@ -111,6 +120,37 @@ export class CoffeeWizardComponent
   private firstRender = true;
 
   private unsubscribe$ = new Subject<void>();
+
+  get originalPrice(): number {
+    return this.planInfo[this.subsType - 1]?.price || 0;
+  }
+
+  get discountedPrice(): number {
+    if (!this.appliedCoupon) {
+      return this.originalPrice;
+    }
+
+    let discount = 0;
+
+    if (this.appliedCoupon.percent_off) {
+      // Percentage discount
+      discount = this.originalPrice * (this.appliedCoupon.percent_off / 100);
+    } else if (this.appliedCoupon.amount_off) {
+      // Fixed amount discount (convert from cents to pesos)
+      discount = this.appliedCoupon.amount_off / 100;
+    }
+
+    const finalPrice = this.originalPrice - discount;
+    return Math.max(0, finalPrice); // Ensure price doesn't go below 0
+  }
+
+  get discountAmount(): number {
+    return this.originalPrice - this.discountedPrice;
+  }
+
+  get hasDiscount(): boolean {
+    return this.appliedCoupon && this.discountAmount > 0;
+  }
 
   constructor(
     private fb: FormBuilder,
@@ -190,6 +230,19 @@ export class CoffeeWizardComponent
         this.activeIndex = 0; // Default to step 1
       }
     }
+
+    this.selectCouponState$
+      .pipe(takeUntil(this.unsubscribe$))
+      .subscribe((couponState) => {
+        this.appliedCoupon = couponState.appliedCoupon;
+        this.isValidatingCoupon = couponState.couponValidating;
+        this.couponError = couponState.couponError || '';
+        this.isCouponValid = couponState.appliedCoupon
+          ? true
+          : couponState.couponError
+          ? false
+          : null;
+      });
 
     this.applyBodyStyles();
   }
@@ -365,6 +418,40 @@ export class CoffeeWizardComponent
     });
   }
 
+  async validateCoupon() {
+    if (!this.couponCode.trim()) {
+      this.couponError = 'Por favor ingresa un código de cupón';
+      this.isCouponValid = false;
+      return;
+    }
+
+    // Get the product ID based on subscription type
+    const productId = this.getProductId();
+
+    // Dispatch action to validate coupon with product information
+    this.store.dispatch(
+      LandingActions.validateCoupon({
+        couponCode: this.couponCode,
+        productId: productId,
+        priceId: this.subsType.toString(),
+      })
+    );
+  }
+
+  private getProductId(): string {
+    const productIds = {
+      1: 'price_1RPwwG04sI0kP0GKbbE7YVGU', // 250gr plan
+      2: 'prod_SKc9dsBeYf5lWE', // 500gr plan
+      3: 'price_1RPwvF04sI0kP0GKHrCkDAfS', // 1kg plan
+    };
+    return productIds[this.subsType as keyof typeof productIds] || '';
+  }
+
+  removeCoupon() {
+    this.couponCode = '';
+    this.store.dispatch(LandingActions.removeCoupon());
+  }
+
   async handlePayment(event: Event) {
     event.preventDefault();
 
@@ -409,12 +496,15 @@ export class CoffeeWizardComponent
         roast: this.selectedRoastOption,
         address: this.addressForm.value,
         recipient: this.recipientForm.value,
+        coupon: this.appliedCoupon, // Include coupon in payment data
       });
 
+      // Dispatch with coupon information
       this.store.dispatch(
         LandingActions.attachPaymentMethod({
           paymentMethodId: paymentMethodResult.paymentMethod.id,
           customerId: this.user.stripe_id,
+          couponCode: this.appliedCoupon?.id || null,
         })
       );
     }

@@ -9,10 +9,26 @@
             <h2 class="display-huge mb-2 title_taz">
               {{ planInfo[subsType - 1].label }}
             </h2>
-            <h3 class="mb-5 fw-light">
-              ${{ planInfo[subsType - 1].price }}
-              <span style="font-size: 1.2rem; font-weight: 400">/mes</span>
-            </h3>
+            <div class="mb-5 fw-light">
+              <!-- Show discounted price if coupon applied -->
+              <div *ngIf="hasDiscount && activeIndex === 3">
+                <h3 class="text-success mb-1">
+                  ${{ discountedPrice | number : "1.0-0" }}
+                  <span style="font-size: 1.2rem; font-weight: 400">/mes</span>
+                </h3>
+                <small class="text-muted text-decoration-line-through">
+                  Precio original: ${{ originalPrice | number : "1.0-0" }}/mes
+                </small>
+                <div class="badge bg-success ms-2">
+                  Ahorro: ${{ discountAmount | number : "1.0-0" }}
+                </div>
+              </div>
+              <!-- Show original price if no coupon -->
+              <h3 *ngIf="!hasDiscount || activeIndex !== 3" class="mb-0">
+                ${{ originalPrice | number : "1.0-0" }}
+                <span style="font-size: 1.2rem; font-weight: 400">/mes</span>
+              </h3>
+            </div>
           </ng-container>
         </div>
       </div>
@@ -400,6 +416,56 @@
                     }})
                   </li>
                 </ul>
+              </div>
+
+              <div class="border-top pt-3 mt-3">
+                <h6 class="mb-2">¿Tienes un cupón de descuento?</h6>
+                <div class="input-group mb-2" *ngIf="!appliedCoupon">
+                  <input
+                    type="text"
+                    class="form-control"
+                    placeholder="Código de cupón"
+                    [(ngModel)]="couponCode"
+                    [disabled]="isValidatingCoupon"
+                  />
+                  <button
+                    class="btn btn-outline-secondary"
+                    type="button"
+                    (click)="validateCoupon()"
+                    [disabled]="isValidatingCoupon || !couponCode.trim()"
+                  >
+                    <span *ngIf="!isValidatingCoupon">Aplicar</span>
+                    <span *ngIf="isValidatingCoupon">
+                      <span
+                        class="spinner-border spinner-border-sm me-1"
+                      ></span>
+                      Validando...
+                    </span>
+                  </button>
+                </div>
+
+                <!-- Applied Coupon Display -->
+                <div
+                  *ngIf="appliedCoupon"
+                  class="alert alert-success d-flex justify-content-between align-items-center"
+                >
+                  <div>
+                    <strong>{{ appliedCoupon.name }}</strong>
+                    <small class="d-block">{{ appliedCoupon.id }}</small>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    (click)="removeCoupon()"
+                  >
+                    Remover
+                  </button>
+                </div>
+
+                <!-- Coupon Error -->
+                <div *ngIf="!!couponError" class="alert alert-danger">
+                  Cupon inválido
+                </div>
               </div>
 
               <div class="container">

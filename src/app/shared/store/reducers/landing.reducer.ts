@@ -304,5 +304,30 @@ export const LandingReducer = createRehydrateReducer(
         errorResponse: error,
       };
     }
-  )
+  ),
+  on(LandingActions.validateCoupon, (state) => ({
+    ...state,
+    couponValidating: true,
+    couponError: null,
+  })),
+
+  on(LandingActions.validateCouponSuccess, (state, { coupon }) => ({
+    ...state,
+    appliedCoupon: coupon,
+    couponValidating: false,
+    couponError: null,
+  })),
+
+  on(LandingActions.validateCouponFailure, (state, { error }) => ({
+    ...state,
+    appliedCoupon: null,
+    couponValidating: false,
+    couponError: error,
+  })),
+
+  on(LandingActions.removeCoupon, (state) => ({
+    ...state,
+    appliedCoupon: null,
+    couponError: null,
+  }))
 );

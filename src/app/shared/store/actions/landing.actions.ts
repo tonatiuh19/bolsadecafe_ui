@@ -50,7 +50,11 @@ export const setWizardStep = createAction(
 
 export const attachPaymentMethod = createAction(
   `${actor} Attach Payment Method`,
-  props<{ paymentMethodId: string; customerId: string }>()
+  props<{
+    paymentMethodId: string;
+    customerId: string;
+    couponCode?: string | null;
+  }>()
 );
 
 export const attachPaymentMethodSuccess = createAction(
@@ -65,7 +69,7 @@ export const attachPaymentMethodFailure = createAction(
 
 export const subscribeCustomer = createAction(
   `${actor} Subscribe Customer`,
-  props<{ customerId: string; priceId: string }>()
+  props<{ customerId: string; priceId: string; couponCode?: string | null }>()
 );
 
 export const subscribeCustomerSuccess = createAction(
@@ -130,3 +134,20 @@ export const deleteUserAndSubscriptionFailure = createAction(
   `${actor} Delete User and Subscription Failure`,
   props<{ error: any }>()
 );
+
+export const validateCoupon = createAction(
+  `${actor} Validate Coupon`,
+  props<{ couponCode: string; productId?: string; priceId?: string }>()
+);
+
+export const validateCouponSuccess = createAction(
+  `${actor} Validate Coupon Success`,
+  props<{ coupon: any }>()
+);
+
+export const validateCouponFailure = createAction(
+  `${actor} Validate Coupon Failure`,
+  props<{ error: any }>()
+);
+
+export const removeCoupon = createAction(`${actor} Remove Coupon`);

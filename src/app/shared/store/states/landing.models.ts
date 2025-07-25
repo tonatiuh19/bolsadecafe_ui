@@ -4,6 +4,9 @@ export interface LandingState {
   user: UserModel;
   wizard: WizardModel;
   roastTypes: RoastModel[];
+  appliedCoupon: any | null;
+  couponValidating: boolean;
+  couponError: string | null;
   isLoading?: boolean;
   isError?: boolean;
   errorResponse?: string;

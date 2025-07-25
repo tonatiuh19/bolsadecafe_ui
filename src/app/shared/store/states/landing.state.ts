@@ -43,6 +43,9 @@ export const initialLandingState: LandingState = {
     isInvalidPayment: false,
   },
   roastTypes: [],
+  appliedCoupon: null,
+  couponValidating: false,
+  couponError: null,
   isLoading: false,
   isError: false,
 };
