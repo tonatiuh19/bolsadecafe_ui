@@ -960,6 +960,409 @@ const handleDemo: RequestHandler = (_req, res) => {
   });
 };
 
+// =====================================================
+// USER DASHBOARD ENDPOINTS
+// =====================================================
+
+/** Helper: extract userId from Bearer JWT, returns null on failure */
+function extractUserId(req: any, res: any): number | null {
+  const authHeader = req.headers.authorization as string | undefined;
+  if (!authHeader?.startsWith("Bearer ")) {
+    res
+      .status(401)
+      .json({ success: false, error: "No session token provided" });
+    return null;
+  }
+  try {
+    const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
+    if (decoded.userType !== "user") {
+      res.status(401).json({ success: false, error: "Invalid session type" });
+      return null;
+    }
+    return decoded.userId as number;
+  } catch {
+    res
+      .status(401)
+      .json({ success: false, error: "Invalid or expired session" });
+    return null;
+  }
+}
+
+/**
+ * GET /api/user/subscription
+ * Returns the authenticated user's active subscription with plan, grind type, and address.
+ */
+const handleGetMySubscription: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  try {
+    const [rows] = await pool.query<any[]>(
+      `SELECT
+        s.id, s.status, s.stripe_subscription_id,
+        s.current_period_start, s.current_period_end,
+        s.cancel_at_period_end, s.cancelled_at, s.created_at,
+        sp.id AS plan_id, sp.name AS plan_name, sp.weight AS plan_weight, sp.price_mxn AS plan_price,
+        gt.id AS grind_type_id, gt.name AS grind_type_name,
+        a.id AS addr_id, a.full_name AS addr_full_name,
+        a.street_address, a.street_address_2,
+        a.city, ms.name AS state, a.state_id,
+        a.postal_code, a.phone AS addr_phone
+       FROM subscriptions s
+       JOIN subscription_plans sp ON s.plan_id = sp.id
+       JOIN grind_types gt ON s.grind_type_id = gt.id
+       LEFT JOIN addresses a ON s.shipping_address_id = a.id
+       LEFT JOIN mexico_states ms ON a.state_id = ms.id
+       WHERE s.user_id = ? AND s.status NOT IN ('cancelled')
+       ORDER BY s.created_at DESC
+       LIMIT 1`,
+      [userId],
+    );
+
+    if (rows.length === 0) {
+      return res.json({ success: true, subscription: null });
+    }
+
+    const r = rows[0];
+    return res.json({
+      success: true,
+      subscription: {
+        id: r.id,
+        status: r.status,
+        planId: r.plan_id,
+        planName: r.plan_name,
+        planWeight: r.plan_weight,
+        planPrice: Number(r.plan_price),
+        grindTypeId: r.grind_type_id,
+        grindTypeName: r.grind_type_name,
+        stripeSubscriptionId: r.stripe_subscription_id,
+        currentPeriodStart: r.current_period_start,
+        currentPeriodEnd: r.current_period_end,
+        cancelAtPeriodEnd: Boolean(r.cancel_at_period_end),
+        cancelledAt: r.cancelled_at,
+        createdAt: r.created_at,
+        shippingAddress: r.addr_id
+          ? {
+              id: r.addr_id,
+              fullName: r.addr_full_name,
+              streetAddress: r.street_address,
+              streetAddress2: r.street_address_2,
+              city: r.city,
+              state: r.state,
+              stateId: r.state_id,
+              postalCode: r.postal_code,
+              phone: r.addr_phone,
+            }
+          : null,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching user subscription:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch subscription" });
+  }
+};
+
+/**
+ * PUT /api/user/subscription/address
+ * Update shipping address for a subscription.
+ */
+const handleUpdateSubscriptionAddress: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  const {
+    subscriptionId,
+    fullName,
+    streetAddress,
+    streetAddress2,
+    city,
+    stateId,
+    postalCode,
+    phone,
+  } = req.body;
+
+  if (
+    !subscriptionId ||
+    !fullName ||
+    !streetAddress ||
+    !city ||
+    !stateId ||
+    !postalCode
+  ) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Missing required address fields" });
+  }
+
+  try {
+    // Verify subscription belongs to user
+    const [subs] = await pool.query<any[]>(
+      "SELECT id, shipping_address_id FROM subscriptions WHERE id = ? AND user_id = ?",
+      [subscriptionId, userId],
+    );
+    if (subs.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Subscription not found" });
+    }
+
+    const sub = subs[0];
+
+    if (sub.shipping_address_id) {
+      // Update existing address
+      await pool.query(
+        `UPDATE addresses SET full_name=?, street_address=?, street_address_2=?,
+         city=?, state_id=?, postal_code=?, phone=?, updated_at=NOW()
+         WHERE id=? AND user_id=?`,
+        [
+          fullName,
+          streetAddress,
+          streetAddress2 || null,
+          city,
+          stateId,
+          postalCode,
+          phone || null,
+          sub.shipping_address_id,
+          userId,
+        ],
+      );
+    } else {
+      // Create new address and link to subscription
+      const [result] = await pool.query<any>(
+        `INSERT INTO addresses (user_id, address_type, full_name, street_address, street_address_2, city, state_id, postal_code, phone, is_default)
+         VALUES (?, 'shipping', ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [
+          userId,
+          fullName,
+          streetAddress,
+          streetAddress2 || null,
+          city,
+          stateId,
+          postalCode,
+          phone || null,
+        ],
+      );
+      await pool.query(
+        "UPDATE subscriptions SET shipping_address_id=? WHERE id=?",
+        [result.insertId, subscriptionId],
+      );
+    }
+
+    res.json({ success: true, message: "Dirección actualizada correctamente" });
+  } catch (error) {
+    console.error("Error updating address:", error);
+    res.status(500).json({ success: false, error: "Failed to update address" });
+  }
+};
+
+/**
+ * PUT /api/user/subscription/contact
+ * Update delivery contact name on the shipping address.
+ */
+const handleUpdateDeliveryContact: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  const { subscriptionId, fullName } = req.body;
+
+  if (!subscriptionId || !fullName?.trim()) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Missing subscriptionId or fullName" });
+  }
+
+  try {
+    const [subs] = await pool.query<any[]>(
+      "SELECT shipping_address_id FROM subscriptions WHERE id = ? AND user_id = ?",
+      [subscriptionId, userId],
+    );
+    if (subs.length === 0 || !subs[0].shipping_address_id) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Subscription or address not found" });
+    }
+
+    await pool.query(
+      "UPDATE addresses SET full_name=?, updated_at=NOW() WHERE id=? AND user_id=?",
+      [fullName.trim(), subs[0].shipping_address_id, userId],
+    );
+
+    res.json({ success: true, message: "Persona de entrega actualizada" });
+  } catch (error) {
+    console.error("Error updating delivery contact:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to update delivery contact" });
+  }
+};
+
+/**
+ * PUT /api/user/subscription/plan
+ * Upgrade or change plan on an active Stripe subscription.
+ */
+const handleUpgradeSubscriptionPlan: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  const { subscriptionId, newPlanId } = req.body;
+
+  if (!subscriptionId || !newPlanId) {
+    return res
+      .status(400)
+      .json({
+        success: false,
+        error: "subscriptionId and newPlanId are required",
+      });
+  }
+
+  try {
+    // Verify subscription belongs to user and get stripe id
+    const [subs] = await pool.query<any[]>(
+      "SELECT id, stripe_subscription_id, plan_id FROM subscriptions WHERE id = ? AND user_id = ? AND status = 'active'",
+      [subscriptionId, userId],
+    );
+    if (subs.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Active subscription not found" });
+    }
+
+    const sub = subs[0];
+
+    // Get new plan stripe price id
+    const env = process.env.NODE_ENV;
+    const priceField =
+      env === "production" ? "stripe_price_id_prod" : "stripe_price_id_test";
+    const [plans] = await pool.query<any[]>(
+      `SELECT id, ${priceField} AS stripe_price_id FROM subscription_plans WHERE id = ? AND is_active = 1`,
+      [newPlanId],
+    );
+    if (plans.length === 0) {
+      return res.status(404).json({ success: false, error: "Plan not found" });
+    }
+
+    const newPlan = plans[0];
+
+    if (sub.stripe_subscription_id && newPlan.stripe_price_id) {
+      // Update in Stripe
+      const stripeSub = await stripe.subscriptions.retrieve(
+        sub.stripe_subscription_id,
+      );
+      const itemId = (stripeSub as any).items.data[0]?.id;
+      if (itemId) {
+        await stripe.subscriptions.update(sub.stripe_subscription_id, {
+          items: [{ id: itemId, price: newPlan.stripe_price_id }],
+          proration_behavior: "create_prorations",
+        });
+      }
+    }
+
+    // Update DB
+    await pool.query(
+      "UPDATE subscriptions SET plan_id=?, updated_at=NOW() WHERE id=? AND user_id=?",
+      [newPlanId, subscriptionId, userId],
+    );
+
+    res.json({ success: true, message: "Plan actualizado correctamente" });
+  } catch (error) {
+    console.error("Error upgrading plan:", error);
+    res.status(500).json({ success: false, error: "Failed to upgrade plan" });
+  }
+};
+
+/**
+ * POST /api/user/subscription/cancel
+ * Cancel a subscription at period end. Requires confirmation phrase.
+ */
+const handleCancelSubscription: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  const { subscriptionId, confirmPhrase } = req.body;
+
+  if (confirmPhrase !== "CANCELAR MI SUSCRIPCIÓN") {
+    return res
+      .status(400)
+      .json({ success: false, error: "Frase de confirmación incorrecta" });
+  }
+
+  try {
+    const [subs] = await pool.query<any[]>(
+      "SELECT id, stripe_subscription_id, current_period_end FROM subscriptions WHERE id = ? AND user_id = ? AND status NOT IN ('cancelled')",
+      [subscriptionId, userId],
+    );
+    if (subs.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Subscription not found" });
+    }
+
+    const sub = subs[0];
+
+    if (sub.stripe_subscription_id) {
+      await stripe.subscriptions.update(sub.stripe_subscription_id, {
+        cancel_at_period_end: true,
+      });
+    }
+
+    await pool.query(
+      "UPDATE subscriptions SET cancel_at_period_end=1, cancelled_at=NOW(), updated_at=NOW() WHERE id=?",
+      [subscriptionId],
+    );
+
+    res.json({
+      success: true,
+      message: "Tu suscripción se cancelará al finalizar el período actual",
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: sub.current_period_end,
+    });
+  } catch (error) {
+    console.error("Error cancelling subscription:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to cancel subscription" });
+  }
+};
+
+/**
+ * POST /api/user/billing-portal
+ * Create Stripe billing portal session for payment method management.
+ */
+const handleBillingPortal: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  try {
+    const [users] = await pool.query<any[]>(
+      "SELECT stripe_customer_id FROM users WHERE id = ? AND is_active = 1",
+      [userId],
+    );
+
+    if (users.length === 0 || !users[0].stripe_customer_id) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "No Stripe customer linked to this account",
+        });
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: users[0].stripe_customer_id,
+      return_url: `${process.env.FRONTEND_URL || "http://localhost:5173"}/`,
+    });
+
+    res.json({ success: true, url: session.url });
+  } catch (error) {
+    console.error("Error creating billing portal session:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to open billing portal" });
+  }
+};
+
 /**
  * POST /api/create-checkout-session
  * Create Stripe checkout session for subscription
@@ -1546,6 +1949,14 @@ function createServer() {
 
   // Business inquiries
   app.post("/api/business-inquiries", handleCreateBusinessInquiry);
+
+  // User dashboard (authenticated)
+  app.get("/api/user/subscription", handleGetMySubscription);
+  app.put("/api/user/subscription/address", handleUpdateSubscriptionAddress);
+  app.put("/api/user/subscription/contact", handleUpdateDeliveryContact);
+  app.put("/api/user/subscription/plan", handleUpgradeSubscriptionPlan);
+  app.post("/api/user/subscription/cancel", handleCancelSubscription);
+  app.post("/api/user/billing-portal", handleBillingPortal);
 
   // Blog
   app.get("/api/blog/posts", handleGetBlogPosts);

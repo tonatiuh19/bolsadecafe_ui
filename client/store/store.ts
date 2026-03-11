@@ -5,6 +5,7 @@ import statesReducer from "./slices/statesSlice";
 import authReducer from "./slices/authSlice";
 import paymentsReducer from "./slices/paymentsSlice";
 import subscriptionWizardReducer from "./slices/subscriptionWizardSlice";
+import dashboardReducer from "./slices/dashboardSlice";
 
 export const store = configureStore({
   reducer: {
@@ -14,6 +15,7 @@ export const store = configureStore({
     auth: authReducer,
     payments: paymentsReducer,
     subscriptionWizard: subscriptionWizardReducer,
+    dashboard: dashboardReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

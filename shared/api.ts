@@ -251,3 +251,93 @@ export interface CreateBusinessInquiryResponse {
   message: string;
   inquiry_id: number;
 }
+
+// ─── User Dashboard ───────────────────────────────────────────────────────────
+
+export interface UserSubscriptionDetail {
+  id: number;
+  status:
+    | "active"
+    | "cancelled"
+    | "paused"
+    | "past_due"
+    | "incomplete"
+    | "trialing";
+  planId: number;
+  planName: string;
+  planWeight: string;
+  planPrice: number;
+  grindTypeId: number;
+  grindTypeName: string;
+  stripeSubscriptionId?: string;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  cancelAtPeriodEnd: boolean;
+  cancelledAt?: string;
+  createdAt: string;
+  shippingAddress?: {
+    id: number;
+    fullName: string;
+    streetAddress: string;
+    streetAddress2?: string;
+    city: string;
+    state: string;
+    stateId: number;
+    postalCode: string;
+    phone?: string;
+  };
+}
+
+export interface UserSubscriptionResponse {
+  success: boolean;
+  subscription: UserSubscriptionDetail | null;
+}
+
+export interface UpdateAddressRequest {
+  subscriptionId: number;
+  fullName: string;
+  streetAddress: string;
+  streetAddress2?: string;
+  city: string;
+  stateId: number;
+  postalCode: string;
+  phone?: string;
+}
+
+export interface UpdateAddressResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface UpdateDeliveryContactRequest {
+  subscriptionId: number;
+  fullName: string;
+}
+
+export interface UpgradePlanRequest {
+  subscriptionId: number;
+  newPlanId: number;
+}
+
+export interface UpgradePlanResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface CancelSubscriptionRequest {
+  subscriptionId: number;
+  /** Must match "CANCELAR MI SUSCRIPCIÓN" to confirm */
+  confirmPhrase: string;
+}
+
+export interface CancelSubscriptionResponse {
+  success: boolean;
+  message: string;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd?: string;
+}
+
+export interface BillingPortalResponse {
+  success: boolean;
+  url: string;
+}

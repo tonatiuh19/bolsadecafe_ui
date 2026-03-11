@@ -55,6 +55,7 @@ import {
   validateSession,
 } from "@/store/slices/authSlice";
 import BusinessContactModal from "@/components/BusinessContactModal";
+import UserDashboard from "@/components/UserDashboard";
 
 /* ─── types ───────────────────────────────────────────── */
 interface SubscriptionPlan {
@@ -245,6 +246,7 @@ export default function Index() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const [businessModalOpen, setBusinessModalOpen] = useState(false);
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [statsVisible, setStatsVisible] = useState(false);
@@ -505,13 +507,9 @@ export default function Index() {
                       </p>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem>
-                      <User className="mr-2 h-4 w-4" />
-                      Mi Perfil
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Coffee className="mr-2 h-4 w-4" />
-                      Mis Suscripciones
+                    <DropdownMenuItem onSelect={() => setDashboardOpen(true)}>
+                      <Package className="mr-2 h-4 w-4" />
+                      Mi Suscripción
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -1264,6 +1262,11 @@ export default function Index() {
       <BusinessContactModal
         open={businessModalOpen}
         onOpenChange={setBusinessModalOpen}
+      />
+
+      <UserDashboard
+        open={dashboardOpen}
+        onClose={() => setDashboardOpen(false)}
       />
     </div>
   );
