@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import { PhoneInput } from "@/components/ui/phone-input";
 import {
   Mail,
@@ -145,13 +146,16 @@ export default function AuthModal({
   const authLoading = useAppSelector(selectAuthLoading);
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
 
+  // Redirect on auth success without calling setState during render
+  useEffect(() => {
+    if (isAuthenticated && open) onSuccess();
+  }, [isAuthenticated, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [email, setEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [phoneCountry, setPhoneCountry] = useState<"MX" | "US">("MX");
-
-  if (isAuthenticated && open) onSuccess();
 
   const handleSendCode = async () => {
     if (!email) return;
@@ -215,7 +219,13 @@ export default function AuthModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden rounded-2xl border-0 shadow-2xl gap-0">
+      <DialogContent
+        className="sm:max-w-[420px] p-0 overflow-hidden rounded-2xl border-0 shadow-2xl gap-0"
+        aria-describedby={undefined}
+      >
+        <VisuallyHidden.Root>
+          <DialogTitle>{stepMeta.title}</DialogTitle>
+        </VisuallyHidden.Root>
         {/* ── Top accent band ── */}
         <div className="relative bg-gradient-to-br from-neutral-100 via-brand-50 to-white px-8 pt-8 pb-10 overflow-hidden border-b border-neutral-100">
           {/* subtle brand circle */}

@@ -9,10 +9,17 @@ const axiosInstance = axios.create({
   },
 });
 
-// Request interceptor for logging (optional)
+// Request interceptor — attach session ID and log
 axiosInstance.interceptors.request.use(
   (config) => {
     console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+    // Attach visitor session ID so the server can track events inline
+    let sessionId = sessionStorage.getItem("bdc_session_id");
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      sessionStorage.setItem("bdc_session_id", sessionId);
+    }
+    config.headers["X-Session-ID"] = sessionId;
     return config;
   },
   (error) => {

@@ -53,6 +53,11 @@ const grindTypesSlice = createSlice({
     clearGrindTypesError: (state) => {
       state.error = null;
     },
+    setGrindTypes: (state, action: { payload: GrindType[] }) => {
+      state.grindTypes = action.payload;
+      state.loading = false;
+      state.lastFetched = Date.now();
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -73,7 +78,7 @@ const grindTypesSlice = createSlice({
 });
 
 // Actions
-export const { clearGrindTypesError } = grindTypesSlice.actions;
+export const { clearGrindTypesError, setGrindTypes } = grindTypesSlice.actions;
 
 // Selectors
 export const selectGrindTypes = (state: any) => state.grindTypes.grindTypes;

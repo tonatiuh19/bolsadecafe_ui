@@ -33,33 +33,24 @@ import {
 } from "@stripe/react-stripe-js";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
-  fetchGrindTypes,
   selectGrindTypes,
   selectGrindTypesLoading,
 } from "@/store/slices/grindTypesSlice";
+import { selectStates, selectStatesLoading } from "@/store/slices/statesSlice";
+import { selectPlans, selectPlansLoading } from "@/store/slices/plansSlice";
+import { selectIsAuthenticated, selectUser } from "@/store/slices/authSlice";
+import { fetchHome } from "@/store/slices/homeSlice";
 import {
-  fetchStates,
-  selectStates,
-  selectStatesLoading,
-} from "@/store/slices/statesSlice";
-import {
-  fetchPlans,
-  selectPlans,
-  selectPlansLoading,
-} from "@/store/slices/plansSlice";
-import {
-  selectIsAuthenticated,
-  selectUser,
-  validateSession,
-} from "@/store/slices/authSlice";
-import {
-  createPaymentIntent,
+  createSetupIntent,
+  createSubscription,
   selectClientSecret,
   selectPaymentLoading,
   selectPaymentError,
+  clearPaymentState,
 } from "@/store/slices/paymentsSlice";
 import {
   updateWizardData,
+  resetWizardData,
   selectWizardData,
 } from "@/store/slices/subscriptionWizardSlice";
 import AuthModal from "@/components/AuthModal";
@@ -85,6 +76,8 @@ interface WizardData {
   fullName: string;
   streetAddress: string;
   streetAddress2: string;
+  apartmentNumber: string;
+  deliveryInstructions: string;
   city: string;
   stateId: string;
   postalCode: string;
@@ -123,22 +116,21 @@ export default function SubscriptionWizard() {
     loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY),
   );
 
+  // Reset wizard data on mount when a plan is pre-selected from home page
+  useEffect(() => {
+    if (selectedPlanId) {
+      dispatch(resetWizardData());
+    }
+  }, []);
+
   // Fetch data on mount
   useEffect(() => {
-    dispatch(fetchGrindTypes());
-    dispatch(fetchStates());
-    dispatch(fetchPlans());
-    dispatch(validateSession()); // Check if user is already logged in
+    dispatch(fetchHome());
   }, [dispatch]);
 
   // When API plans load, set the preselected plan if there is one
   useEffect(() => {
-    if (
-      selectedPlanId &&
-      apiPlans &&
-      apiPlans.length > 0 &&
-      !wizardData.selectedPlan
-    ) {
+    if (selectedPlanId && apiPlans && apiPlans.length > 0) {
       const apiPlan = apiPlans.find((p: any) => p.plan_id === selectedPlanId);
       if (apiPlan) {
         const plan = {
@@ -160,44 +152,17 @@ export default function SubscriptionWizard() {
         setWizardStep(1); // Skip to step 1 if plan is preselected
       }
     }
-  }, [selectedPlanId, apiPlans, wizardData.selectedPlan]);
+  }, [selectedPlanId, apiPlans]);
 
   // Scroll to top when step changes
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [wizardStep]);
 
-  // Fetch client secret when reaching payment step
+  // Create SetupIntent when reaching the payment step
   useEffect(() => {
     if (wizardStep === 4 && wizardData.selectedPlan && !clientSecret) {
-      // Build address object to send with payment intent
-      let addressData = null;
-      if (
-        wizardData.recipientName &&
-        wizardData.streetAddress &&
-        wizardData.city &&
-        wizardData.stateId &&
-        wizardData.postalCode
-      ) {
-        addressData = {
-          full_name: wizardData.recipientName,
-          street_address: wizardData.streetAddress,
-          street_address_2: wizardData.streetAddress2 || null,
-          city: wizardData.city,
-          state_id: parseInt(wizardData.stateId),
-          postal_code: wizardData.postalCode,
-          phone: wizardData.recipientPhone || null,
-          country: "MX",
-          is_default: 1,
-        };
-      }
-
-      dispatch(
-        createPaymentIntent({
-          planId: wizardData.selectedPlan.id,
-          address: addressData,
-        }),
-      );
+      dispatch(createSetupIntent());
     }
   }, [wizardStep, wizardData.selectedPlan, clientSecret, dispatch]);
 
@@ -725,6 +690,30 @@ export default function SubscriptionWizard() {
                       </>
                     )}
 
+                    {/* DEV ONLY: Fill test data button */}
+                    {import.meta.env.DEV && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          dispatch(
+                            updateWizardData({
+                              streetAddress: "Calle Independencia 47",
+                              streetAddress2: "Col. Centro",
+                              apartmentNumber: "",
+                              city: "Lagos de Moreno",
+                              stateId: "14", // Jalisco
+                              postalCode: "47400",
+                              deliveryInstructions:
+                                "Casa color azul, tocar timbre",
+                            }),
+                          )
+                        }
+                        className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border border-dashed border-amber-400 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-colors"
+                      >
+                        🧪 Rellenar datos de prueba (solo dev)
+                      </button>
+                    )}
+
                     {/* Street Address */}
                     <div>
                       <Label
@@ -761,12 +750,38 @@ export default function SubscriptionWizard() {
                       </Label>
                       <Input
                         id="streetAddress2"
-                        placeholder="Ej: Col. Del Valle, Depto 4B"
+                        placeholder="Ej: Col. Del Valle"
                         value={wizardData.streetAddress2}
                         onChange={(e) =>
                           dispatch(
                             updateWizardData({
                               streetAddress2: e.target.value,
+                            }),
+                          )
+                        }
+                        className="text-base p-3 h-11 border-2 border-neutral-200 rounded-lg focus:border-brand-500 focus:ring-brand-500 focus:ring-2 transition-all"
+                      />
+                    </div>
+
+                    {/* Apartment / Unit Number (Optional) */}
+                    <div>
+                      <Label
+                        htmlFor="apartmentNumber"
+                        className="text-sm font-semibold text-neutral-900 block mb-2"
+                      >
+                        Departamento / Interior{" "}
+                        <span className="text-neutral-500 font-normal">
+                          (opcional)
+                        </span>
+                      </Label>
+                      <Input
+                        id="apartmentNumber"
+                        placeholder="Ej: Depto 4B, Piso 3"
+                        value={wizardData.apartmentNumber}
+                        onChange={(e) =>
+                          dispatch(
+                            updateWizardData({
+                              apartmentNumber: e.target.value,
                             }),
                           )
                         }
@@ -868,6 +883,33 @@ export default function SubscriptionWizard() {
                       />
                     </div>
 
+                    {/* Delivery Instructions (Optional) */}
+                    <div>
+                      <Label
+                        htmlFor="deliveryInstructions"
+                        className="text-sm font-semibold text-neutral-900 block mb-2"
+                      >
+                        Instrucciones de entrega{" "}
+                        <span className="text-neutral-500 font-normal">
+                          (opcional)
+                        </span>
+                      </Label>
+                      <textarea
+                        id="deliveryInstructions"
+                        placeholder="Ej: Tocar el timbre 2 veces, dejar con el portero..."
+                        value={wizardData.deliveryInstructions}
+                        onChange={(e) =>
+                          dispatch(
+                            updateWizardData({
+                              deliveryInstructions: e.target.value,
+                            }),
+                          )
+                        }
+                        rows={3}
+                        className="w-full text-base p-3 border-2 border-neutral-200 rounded-lg focus:border-brand-500 focus:ring-brand-500 focus:ring-2 transition-all resize-none"
+                      />
+                    </div>
+
                     <p className="text-neutral-600 text-sm mt-2">
                       Solo utilizaremos estos datos para coordinar la entrega
                     </p>
@@ -952,13 +994,15 @@ export default function SubscriptionWizard() {
 
                   {/* Stripe Payment Form */}
                   <div className="border-2 border-neutral-200 rounded-xl p-6 bg-white">
-                    <h4 className="font-bold text-lg text-neutral-900 mb-4 flex items-center">
+                    <h4 className="font-bold text-lg text-neutral-900 mb-2 flex items-center">
                       <CreditCard className="h-5 w-5 mr-2 text-brand-600" />
-                      Método de Pago
+                      Método de Pago Predeterminado
                     </h4>
                     <p className="text-neutral-600 text-sm mb-6">
-                      Procesamiento seguro con Stripe. Tu información está
-                      protegida.
+                      Agrega tu tarjeta para activar la suscripción. Esta sera
+                      tu método de pago predeterminado y se usará
+                      automáticamente cada mes. Puedes actualizarla en cualquier
+                      momento desde tu cuenta.
                     </p>
                     {paymentError ? (
                       <div className="min-h-[200px] flex items-center justify-center">
@@ -974,35 +1018,7 @@ export default function SubscriptionWizard() {
                           <Button
                             onClick={() => {
                               if (wizardData.selectedPlan) {
-                                // Build address to retry payment intent
-                                let addressData = null;
-                                if (
-                                  wizardData.recipientName &&
-                                  wizardData.streetAddress &&
-                                  wizardData.city &&
-                                  wizardData.stateId &&
-                                  wizardData.postalCode
-                                ) {
-                                  addressData = {
-                                    full_name: wizardData.recipientName,
-                                    street_address: wizardData.streetAddress,
-                                    street_address_2:
-                                      wizardData.streetAddress2 || null,
-                                    city: wizardData.city,
-                                    state_id: parseInt(wizardData.stateId),
-                                    postal_code: wizardData.postalCode,
-                                    phone: wizardData.recipientPhone || null,
-                                    country: "MX",
-                                    is_default: 1,
-                                  };
-                                }
-
-                                dispatch(
-                                  createPaymentIntent({
-                                    planId: wizardData.selectedPlan.id,
-                                    address: addressData,
-                                  }),
-                                );
+                                dispatch(createSetupIntent());
                               }
                             }}
                             variant="outline"
@@ -1046,17 +1062,75 @@ export default function SubscriptionWizard() {
                         options={{ clientSecret }}
                       >
                         <StripeCheckoutForm
-                          amount={wizardData.selectedPlan?.price || 0}
-                          planId={wizardData.selectedPlan?.id || ""}
-                          grindTypeId={wizardData.grind}
-                          onSuccess={() => {
-                            console.log("Payment successful!");
-                            // TODO: Navigate to success page or show confirmation
-                            navigate("/");
+                          clientSecret={clientSecret}
+                          onSuccess={async (paymentMethodId) => {
+                            // Build address from wizard data
+                            const address =
+                              wizardData.recipientName &&
+                              wizardData.streetAddress &&
+                              wizardData.city &&
+                              wizardData.stateId &&
+                              wizardData.postalCode
+                                ? {
+                                    full_name: wizardData.recipientName,
+                                    street_address: wizardData.streetAddress,
+                                    street_address_2:
+                                      wizardData.streetAddress2 || null,
+                                    apartment_number:
+                                      wizardData.apartmentNumber || null,
+                                    delivery_instructions:
+                                      wizardData.deliveryInstructions || null,
+                                    city: wizardData.city,
+                                    state_id: parseInt(wizardData.stateId),
+                                    postal_code: wizardData.postalCode,
+                                    phone: wizardData.recipientPhone || null,
+                                    country: "MX",
+                                    is_default: 1,
+                                  }
+                                : null;
+
+                            const result = await dispatch(
+                              createSubscription({
+                                paymentMethodId,
+                                planId: wizardData.selectedPlan?.id || "",
+                                grindTypeId: wizardData.grind || undefined,
+                                address,
+                              }),
+                            );
+
+                            if (createSubscription.fulfilled.match(result)) {
+                              const payload = result.payload as any;
+                              if (payload?.requiresAction) {
+                                throw new Error(
+                                  "Tu banco requiere autenticación adicional (3D Secure). Por favor intenta con otra tarjeta o contacta a tu banco.",
+                                );
+                              }
+                              if (!payload?.success) {
+                                throw new Error(
+                                  payload?.error ||
+                                    "Error al crear la suscripción",
+                                );
+                              }
+                              navigate(
+                                `/subscription/success?plan_id=${
+                                  wizardData.selectedPlan?.id || ""
+                                }${wizardData.grind ? `&grind_type_id=${wizardData.grind}` : ""}`,
+                              );
+                            } else {
+                              // Thunk was rejected — surface the API error message
+                              const errPayload = result.payload as any;
+                              throw new Error(
+                                errPayload?.error ||
+                                  (result as any).error?.message ||
+                                  "Error al crear la suscripción",
+                              );
+                            }
                           }}
                           onError={(error) => {
-                            console.error("Payment error:", error);
-                            // TODO: Show error message to user
+                            console.error(
+                              "Card setup / subscription error:",
+                              error,
+                            );
                           }}
                         />
                       </Elements>
@@ -1221,7 +1295,7 @@ export default function SubscriptionWizard() {
               Anterior
             </Button>
 
-            {wizardStep < totalSteps - 1 ? (
+            {wizardStep < totalSteps - 1 && (
               <Button
                 onClick={nextStep}
                 disabled={
@@ -1241,16 +1315,6 @@ export default function SubscriptionWizard() {
               >
                 Continuar
                 <ChevronRight className="ml-2 h-4 w-4" />
-              </Button>
-            ) : (
-              <Button
-                onClick={handleSubmit}
-                disabled={
-                  !wizardData.recipientName || !wizardData.recipientPhone
-                }
-                className="bg-gradient-to-r from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white font-medium text-base px-8 py-3 rounded-lg shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                ¡Confirmar Suscripción!
               </Button>
             )}
           </div>

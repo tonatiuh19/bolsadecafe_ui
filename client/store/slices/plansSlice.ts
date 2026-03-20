@@ -4,12 +4,17 @@ import axios from "@/lib/axios";
 // Types
 export interface SubscriptionPlan {
   id: number;
+  plan_id: string;
   name: string;
   description: string;
   price: number;
-  weight: number;
+  price_mxn: string;
+  weight: string;
   is_active: boolean;
+  requires_contact?: boolean;
   stripe_price_id?: string;
+  stripe_price_id_test?: string;
+  stripe_price_id_prod?: string;
   features?: string[];
   created_at?: string;
   updated_at?: string;
@@ -53,6 +58,11 @@ const plansSlice = createSlice({
     clearPlansError: (state) => {
       state.error = null;
     },
+    setPlans: (state, action: { payload: SubscriptionPlan[] }) => {
+      state.plans = action.payload;
+      state.loading = false;
+      state.lastFetched = Date.now();
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -73,7 +83,7 @@ const plansSlice = createSlice({
 });
 
 // Actions
-export const { clearPlansError } = plansSlice.actions;
+export const { clearPlansError, setPlans } = plansSlice.actions;
 
 // Selectors
 export const selectPlans = (state: any) => state.plans.plans;

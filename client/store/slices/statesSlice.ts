@@ -49,6 +49,11 @@ const statesSlice = createSlice({
     clearStatesError: (state) => {
       state.error = null;
     },
+    setStates: (state, action: { payload: MexicoState[] }) => {
+      state.states = action.payload;
+      state.loading = false;
+      state.lastFetched = Date.now();
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -69,7 +74,7 @@ const statesSlice = createSlice({
 });
 
 // Actions
-export const { clearStatesError } = statesSlice.actions;
+export const { clearStatesError, setStates } = statesSlice.actions;
 
 // Selectors
 export const selectStates = (state: any) => state.states.states;

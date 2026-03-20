@@ -43,7 +43,6 @@ import {
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
-  fetchPlans,
   selectPlans,
   selectPlansLoading,
   selectPlansError,
@@ -52,10 +51,11 @@ import {
   selectIsAuthenticated,
   selectUser,
   logout,
-  validateSession,
 } from "@/store/slices/authSlice";
+import { fetchHome } from "@/store/slices/homeSlice";
 import BusinessContactModal from "@/components/BusinessContactModal";
 import UserDashboard from "@/components/UserDashboard";
+import AuthModal from "@/components/AuthModal";
 
 /* ─── types ───────────────────────────────────────────── */
 interface SubscriptionPlan {
@@ -247,6 +247,7 @@ export default function Index() {
   const dispatch = useAppDispatch();
   const [businessModalOpen, setBusinessModalOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [statsVisible, setStatsVisible] = useState(false);
@@ -266,8 +267,7 @@ export default function Index() {
   const r5 = useReveal();
 
   useEffect(() => {
-    dispatch(fetchPlans());
-    dispatch(validateSession());
+    dispatch(fetchHome());
   }, [dispatch]);
 
   useEffect(() => {
@@ -478,9 +478,9 @@ export default function Index() {
               ))}
             </nav>
 
-            {/* Right buttons */}
+            {/* Right buttons — pointer-events always on; opacity fades with scroll */}
             <div
-              className={`hidden md:flex items-center gap-2 transition-all duration-300 ${scrolled ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+              className={`hidden md:flex items-center gap-2 transition-opacity duration-300 ${scrolled ? "opacity-100" : "opacity-0"}`}
             >
               {isAuthenticated && user ? (
                 <DropdownMenu>
@@ -526,6 +526,7 @@ export default function Index() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => setAuthModalOpen(true)}
                     className={`gap-1.5 ${scrolled ? "text-neutral-700 hover:bg-neutral-100" : "text-white hover:bg-white/10"}`}
                   >
                     <LogIn className="h-4 w-4" />
@@ -581,7 +582,12 @@ export default function Index() {
               </button>
             ))}
             <div className="pt-2 pb-1 border-t border-neutral-100 flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1 text-sm">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 text-sm"
+                onClick={() => setAuthModalOpen(true)}
+              >
                 Ingresar
               </Button>
               <Button
@@ -646,8 +652,7 @@ export default function Index() {
             {/* Body */}
             <p className="animate-fadeUp-d2 text-base sm:text-lg text-white/65 max-w-lg mb-10 leading-relaxed">
               Tostado artesanalmente en lotes pequeños, seleccionado por
-              expertos y entregado directo del productor a tu hogar. Sin
-              compromisos.
+              expertos y entregado directo del productor a tu hogar.
             </p>
 
             {/* CTAs */}
@@ -673,7 +678,6 @@ export default function Index() {
               {[
                 { icon: Leaf, label: "100% mexicano" },
                 { icon: Truck, label: "Envío gratis" },
-                { icon: Package, label: "Sin compromiso" },
               ].map(({ icon: Icon, label }) => (
                 <div
                   key={label}
@@ -1211,18 +1215,30 @@ export default function Index() {
                 Legal
               </h4>
               <ul className="space-y-2.5 text-sm text-neutral-400">
-                {[
-                  "Términos y Condiciones",
-                  "Política de Privacidad",
-                  "Política de Devoluciones",
-                  "Centro de Ayuda",
-                ].map((t) => (
-                  <li key={t}>
-                    <a href="#" className="hover:text-white transition-colors">
-                      {t}
-                    </a>
-                  </li>
-                ))}
+                <li>
+                  <a
+                    href="/terms"
+                    className="hover:text-white transition-colors"
+                  >
+                    Términos y Condiciones
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/privacy"
+                    className="hover:text-white transition-colors"
+                  >
+                    Política de Privacidad
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/ayuda"
+                    className="hover:text-white transition-colors"
+                  >
+                    Centro de Ayuda
+                  </a>
+                </li>
               </ul>
             </div>
 
@@ -1267,6 +1283,12 @@ export default function Index() {
       <UserDashboard
         open={dashboardOpen}
         onClose={() => setDashboardOpen(false)}
+      />
+
+      <AuthModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={() => setAuthModalOpen(false)}
       />
     </div>
   );

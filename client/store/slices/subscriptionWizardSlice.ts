@@ -20,6 +20,8 @@ interface WizardData {
   fullName: string;
   streetAddress: string;
   streetAddress2: string;
+  apartmentNumber: string;
+  deliveryInstructions: string;
   city: string;
   stateId: string;
   postalCode: string;
@@ -40,6 +42,8 @@ const initialState: SubscriptionWizardState = {
     fullName: "",
     streetAddress: "",
     streetAddress2: "",
+    apartmentNumber: "",
+    deliveryInstructions: "",
     city: "",
     stateId: "",
     postalCode: "",

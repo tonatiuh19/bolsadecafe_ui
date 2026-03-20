@@ -199,6 +199,14 @@ const authSlice = createSlice({
       state.registrationRequired = false;
       state.registrationError = null;
     },
+    /** Called by homeSlice/fetchHome to hydrate user without a round-trip */
+    validateSessionFromHome: (state, action: { payload: User | null }) => {
+      if (action.payload) {
+        state.user = action.payload;
+        state.isAuthenticated = true;
+      }
+      state.loading = false;
+    },
   },
   extraReducers: (builder) => {
     // Send verification code
@@ -290,6 +298,13 @@ const authSlice = createSlice({
 // Actions
 export const { clearAuthError, resetVerification, resetRegistration } =
   authSlice.actions;
+
+/**
+ * Action dispatched by homeSlice/fetchHome to hydrate user state
+ * without a separate /api/auth/validate round-trip.
+ */
+export const setUserFromHome = (user: User | null) =>
+  authSlice.actions.validateSessionFromHome(user);
 
 // Selectors
 export const selectUser = (state: any) => state.auth.user;

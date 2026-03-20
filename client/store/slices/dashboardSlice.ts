@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import axios from "axios";
+import axios from "@/lib/axios";
 import type { RootState } from "@/store/store";
 import type {
   UserSubscriptionDetail,
@@ -12,6 +12,7 @@ import type {
 // ─── State ────────────────────────────────────────────────────────────────────
 
 interface DashboardState {
+  subscriptions: UserSubscriptionDetail[];
   subscription: UserSubscriptionDetail | null;
   loading: boolean;
   error: string | null;
@@ -26,6 +27,7 @@ interface DashboardState {
 }
 
 const initialState: DashboardState = {
+  subscriptions: [],
   subscription: null,
   loading: false,
   error: null,
@@ -51,10 +53,10 @@ export const fetchMySubscription = createAsyncThunk(
   async (_, { getState, rejectWithValue }) => {
     const { sessionToken } = (getState() as RootState).auth;
     try {
-      const { data } = await axios.get("/api/user/subscription", {
+      const { data } = await axios.get("/user/subscription", {
         headers: authHeaders(sessionToken),
       });
-      return data.subscription as UserSubscriptionDetail | null;
+      return data.subscriptions as UserSubscriptionDetail[];
     } catch (err: any) {
       return rejectWithValue(
         err.response?.data?.error || "Error al cargar la suscripción",
@@ -68,11 +70,9 @@ export const updateShippingAddress = createAsyncThunk(
   async (payload: UpdateAddressRequest, { getState, rejectWithValue }) => {
     const { sessionToken } = (getState() as RootState).auth;
     try {
-      const { data } = await axios.put(
-        "/api/user/subscription/address",
-        payload,
-        { headers: authHeaders(sessionToken) },
-      );
+      const { data } = await axios.put("/user/subscription/address", payload, {
+        headers: authHeaders(sessionToken),
+      });
       return data.message as string;
     } catch (err: any) {
       return rejectWithValue(
@@ -90,11 +90,9 @@ export const updateDeliveryContact = createAsyncThunk(
   ) => {
     const { sessionToken } = (getState() as RootState).auth;
     try {
-      const { data } = await axios.put(
-        "/api/user/subscription/contact",
-        payload,
-        { headers: authHeaders(sessionToken) },
-      );
+      const { data } = await axios.put("/user/subscription/contact", payload, {
+        headers: authHeaders(sessionToken),
+      });
       return data.message as string;
     } catch (err: any) {
       return rejectWithValue(
@@ -109,7 +107,7 @@ export const upgradeSubscriptionPlan = createAsyncThunk(
   async (payload: UpgradePlanRequest, { getState, rejectWithValue }) => {
     const { sessionToken } = (getState() as RootState).auth;
     try {
-      const { data } = await axios.put("/api/user/subscription/plan", payload, {
+      const { data } = await axios.put("/user/subscription/plan", payload, {
         headers: authHeaders(sessionToken),
       });
       return data.message as string;
@@ -126,11 +124,9 @@ export const cancelSubscription = createAsyncThunk(
   async (payload: CancelSubscriptionRequest, { getState, rejectWithValue }) => {
     const { sessionToken } = (getState() as RootState).auth;
     try {
-      const { data } = await axios.post(
-        "/api/user/subscription/cancel",
-        payload,
-        { headers: authHeaders(sessionToken) },
-      );
+      const { data } = await axios.post("/user/subscription/cancel", payload, {
+        headers: authHeaders(sessionToken),
+      });
       return data as {
         message: string;
         cancelAtPeriodEnd: boolean;
@@ -150,7 +146,7 @@ export const openBillingPortal = createAsyncThunk(
     const { sessionToken } = (getState() as RootState).auth;
     try {
       const { data } = await axios.post(
-        "/api/user/billing-portal",
+        "/user/billing-portal",
         {},
         { headers: authHeaders(sessionToken) },
       );
@@ -173,6 +169,12 @@ const dashboardSlice = createSlice({
       state.actionError = null;
       state.actionSuccess = null;
     },
+    setManagedSubscription(
+      state,
+      action: PayloadAction<UserSubscriptionDetail | null>,
+    ) {
+      state.subscription = action.payload;
+    },
   },
   extraReducers: (builder) => {
     // fetchMySubscription
@@ -183,7 +185,17 @@ const dashboardSlice = createSlice({
       })
       .addCase(fetchMySubscription.fulfilled, (state, action) => {
         state.loading = false;
-        state.subscription = action.payload;
+        state.subscriptions = action.payload;
+        // Set the first subscription as managed if none selected
+        if (!state.subscription && action.payload.length > 0) {
+          state.subscription = action.payload[0];
+        } else if (state.subscription) {
+          // Keep managed subscription in sync with latest data
+          const updated = action.payload.find(
+            (s) => s.id === state.subscription?.id,
+          );
+          if (updated) state.subscription = updated;
+        }
       })
       .addCase(fetchMySubscription.rejected, (state, action) => {
         state.loading = false;
@@ -270,5 +282,6 @@ const dashboardSlice = createSlice({
   },
 });
 
-export const { clearActionState } = dashboardSlice.actions;
+export const { clearActionState, setManagedSubscription } =
+  dashboardSlice.actions;
 export default dashboardSlice.reducer;

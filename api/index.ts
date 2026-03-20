@@ -193,7 +193,8 @@ async function sendSubscriptionConfirmationEmail(
     `;
 
     await transporter.sendMail({
-      from: `"Bolsa de Café" <${process.env.SMTP_FROM || "noreply@bolsadecafe.com"}>`,
+      from:
+        process.env.SMTP_FROM || `"Bolsa de Café" <${process.env.SMTP_USER}>`,
       to: userEmail,
       subject: "☕ ¡Tu suscripción a Bolsa de Café está confirmada!",
       html: htmlTemplate,
@@ -597,6 +598,8 @@ const handleVerifyCode: RequestHandler = async (req, res) => {
       [sessions[0].id],
     );
 
+    trackVisit(req, "auth_success", "/");
+
     res.json({
       success: true,
       sessionToken,
@@ -951,6 +954,71 @@ const handleCreateBusinessInquiry: RequestHandler = async (req, res) => {
 };
 
 /**
+ * POST /api/help/contact
+ * Submit a Centro de Ayuda contact form
+ */
+const handleSubmitContact: RequestHandler = async (req, res) => {
+  try {
+    const { name, email, topic, subject, message } = req.body;
+
+    // Validation
+    if (!name || !email || !topic || !subject || !message) {
+      return res.status(400).json({
+        error:
+          "Los campos name, email, topic, subject y message son requeridos",
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: "Email inválido" });
+    }
+
+    const validTopics = [
+      "suscripcion",
+      "pagos",
+      "envios",
+      "cuenta",
+      "producto",
+      "otro",
+    ];
+    if (!validTopics.includes(topic)) {
+      return res.status(400).json({ error: "Tema no válido" });
+    }
+
+    if (message.length > 2000) {
+      return res
+        .status(400)
+        .json({ error: "El mensaje no puede superar 2000 caracteres" });
+    }
+
+    const [result] = await pool.query<any>(
+      `INSERT INTO contact_submissions (name, email, topic, subject, message, status)
+       VALUES (?, ?, ?, ?, ?, 'pending')`,
+      [
+        name.trim(),
+        email.trim().toLowerCase(),
+        topic,
+        subject.trim(),
+        message.trim(),
+      ],
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Tu mensaje fue enviado. Te responderemos pronto.",
+      submissionId: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error submitting contact form:", error);
+    return res.status(500).json({
+      error: "Error al enviar el mensaje",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+/**
  * GET /api/demo
  * Demo endpoint
  */
@@ -1006,6 +1074,7 @@ const handleGetMySubscription: RequestHandler = async (req, res) => {
         gt.id AS grind_type_id, gt.name AS grind_type_name,
         a.id AS addr_id, a.full_name AS addr_full_name,
         a.street_address, a.street_address_2,
+        a.apartment_number, a.delivery_instructions,
         a.city, ms.name AS state, a.state_id,
         a.postal_code, a.phone AS addr_phone
        FROM subscriptions s
@@ -1014,47 +1083,49 @@ const handleGetMySubscription: RequestHandler = async (req, res) => {
        LEFT JOIN addresses a ON s.shipping_address_id = a.id
        LEFT JOIN mexico_states ms ON a.state_id = ms.id
        WHERE s.user_id = ? AND s.status NOT IN ('cancelled')
-       ORDER BY s.created_at DESC
-       LIMIT 1`,
+       ORDER BY s.created_at DESC`,
       [userId],
     );
 
     if (rows.length === 0) {
-      return res.json({ success: true, subscription: null });
+      return res.json({ success: true, subscriptions: [] });
     }
 
-    const r = rows[0];
+    const mapRow = (r: any) => ({
+      id: r.id,
+      status: r.status,
+      planId: r.plan_id,
+      planName: r.plan_name,
+      planWeight: r.plan_weight,
+      planPrice: Number(r.plan_price),
+      grindTypeId: r.grind_type_id,
+      grindTypeName: r.grind_type_name,
+      stripeSubscriptionId: r.stripe_subscription_id,
+      currentPeriodStart: r.current_period_start,
+      currentPeriodEnd: r.current_period_end,
+      cancelAtPeriodEnd: Boolean(r.cancel_at_period_end),
+      cancelledAt: r.cancelled_at,
+      createdAt: r.created_at,
+      shippingAddress: r.addr_id
+        ? {
+            id: r.addr_id,
+            fullName: r.addr_full_name,
+            streetAddress: r.street_address,
+            streetAddress2: r.street_address_2,
+            apartmentNumber: r.apartment_number,
+            deliveryInstructions: r.delivery_instructions,
+            city: r.city,
+            state: r.state,
+            stateId: r.state_id,
+            postalCode: r.postal_code,
+            phone: r.addr_phone,
+          }
+        : null,
+    });
+
     return res.json({
       success: true,
-      subscription: {
-        id: r.id,
-        status: r.status,
-        planId: r.plan_id,
-        planName: r.plan_name,
-        planWeight: r.plan_weight,
-        planPrice: Number(r.plan_price),
-        grindTypeId: r.grind_type_id,
-        grindTypeName: r.grind_type_name,
-        stripeSubscriptionId: r.stripe_subscription_id,
-        currentPeriodStart: r.current_period_start,
-        currentPeriodEnd: r.current_period_end,
-        cancelAtPeriodEnd: Boolean(r.cancel_at_period_end),
-        cancelledAt: r.cancelled_at,
-        createdAt: r.created_at,
-        shippingAddress: r.addr_id
-          ? {
-              id: r.addr_id,
-              fullName: r.addr_full_name,
-              streetAddress: r.street_address,
-              streetAddress2: r.street_address_2,
-              city: r.city,
-              state: r.state,
-              stateId: r.state_id,
-              postalCode: r.postal_code,
-              phone: r.addr_phone,
-            }
-          : null,
-      },
+      subscriptions: rows.map(mapRow),
     });
   } catch (error) {
     console.error("Error fetching user subscription:", error);
@@ -1077,6 +1148,8 @@ const handleUpdateSubscriptionAddress: RequestHandler = async (req, res) => {
     fullName,
     streetAddress,
     streetAddress2,
+    apartmentNumber,
+    deliveryInstructions,
     city,
     stateId,
     postalCode,
@@ -1114,12 +1187,15 @@ const handleUpdateSubscriptionAddress: RequestHandler = async (req, res) => {
       // Update existing address
       await pool.query(
         `UPDATE addresses SET full_name=?, street_address=?, street_address_2=?,
+         apartment_number=?, delivery_instructions=?,
          city=?, state_id=?, postal_code=?, phone=?, updated_at=NOW()
          WHERE id=? AND user_id=?`,
         [
           fullName,
           streetAddress,
           streetAddress2 || null,
+          apartmentNumber || null,
+          deliveryInstructions || null,
           city,
           stateId,
           postalCode,
@@ -1131,13 +1207,15 @@ const handleUpdateSubscriptionAddress: RequestHandler = async (req, res) => {
     } else {
       // Create new address and link to subscription
       const [result] = await pool.query<any>(
-        `INSERT INTO addresses (user_id, address_type, full_name, street_address, street_address_2, city, state_id, postal_code, phone, is_default)
-         VALUES (?, 'shipping', ?, ?, ?, ?, ?, ?, ?, 1)`,
+        `INSERT INTO addresses (user_id, address_type, full_name, street_address, street_address_2, apartment_number, delivery_instructions, city, state_id, postal_code, phone, is_default)
+         VALUES (?, 'shipping', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           userId,
           fullName,
           streetAddress,
           streetAddress2 || null,
+          apartmentNumber || null,
+          deliveryInstructions || null,
           city,
           stateId,
           postalCode,
@@ -1209,12 +1287,10 @@ const handleUpgradeSubscriptionPlan: RequestHandler = async (req, res) => {
   const { subscriptionId, newPlanId } = req.body;
 
   if (!subscriptionId || !newPlanId) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        error: "subscriptionId and newPlanId are required",
-      });
+    return res.status(400).json({
+      success: false,
+      error: "subscriptionId and newPlanId are required",
+    });
   }
 
   try {
@@ -1245,8 +1321,12 @@ const handleUpgradeSubscriptionPlan: RequestHandler = async (req, res) => {
 
     const newPlan = plans[0];
 
-    if (sub.stripe_subscription_id && newPlan.stripe_price_id) {
-      // Update in Stripe
+    if (
+      sub.stripe_subscription_id &&
+      sub.stripe_subscription_id.startsWith("sub_") &&
+      newPlan.stripe_price_id
+    ) {
+      // Update in Stripe (only if this is a real Stripe Subscription, not a PaymentIntent)
       const stripeSub = await stripe.subscriptions.retrieve(
         sub.stripe_subscription_id,
       );
@@ -1268,7 +1348,7 @@ const handleUpgradeSubscriptionPlan: RequestHandler = async (req, res) => {
     res.json({ success: true, message: "Plan actualizado correctamente" });
   } catch (error) {
     console.error("Error upgrading plan:", error);
-    res.status(500).json({ success: false, error: "Failed to upgrade plan" });
+    res.status(500).json({ success: false, error: "Failed to update plan" });
   }
 };
 
@@ -1341,12 +1421,10 @@ const handleBillingPortal: RequestHandler = async (req, res) => {
     );
 
     if (users.length === 0 || !users[0].stripe_customer_id) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "No Stripe customer linked to this account",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "No Stripe customer linked to this account",
+      });
     }
 
     const session = await stripe.billingPortal.sessions.create({
@@ -1425,6 +1503,176 @@ const handleCreateCheckoutSession: RequestHandler = async (req, res) => {
   }
 };
 
+// =====================================================
+// PAYMENT METHODS — Setup, List, Default, Remove
+// =====================================================
+
+/**
+ * POST /api/payment-methods/setup
+ * Creates a Stripe SetupIntent so the client can save a card without charging.
+ */
+const handleCreateSetupIntent: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  try {
+    const [users] = await pool.query<any[]>(
+      "SELECT * FROM users WHERE id = ? AND is_active = 1",
+      [userId],
+    );
+    if (users.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+    const user = users[0];
+
+    // Create or retrieve Stripe customer
+    let stripeCustomerId = user.stripe_customer_id;
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.full_name,
+        metadata: { userId: user.id.toString() },
+      });
+      stripeCustomerId = customer.id;
+      await pool.query("UPDATE users SET stripe_customer_id = ? WHERE id = ?", [
+        stripeCustomerId,
+        user.id,
+      ]);
+    }
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: stripeCustomerId,
+      payment_method_types: ["card"],
+      usage: "off_session",
+    });
+
+    res.json({ clientSecret: setupIntent.client_secret });
+  } catch (error) {
+    console.error("Error creating setup intent:", error);
+    res.status(500).json({ error: "Error al crear configuración de pago" });
+  }
+};
+
+/**
+ * GET /api/payment-methods
+ * List all saved payment methods for the authenticated user.
+ */
+const handleGetPaymentMethods: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  try {
+    const [users] = await pool.query<any[]>(
+      "SELECT stripe_customer_id FROM users WHERE id = ?",
+      [userId],
+    );
+    if (users.length === 0 || !users[0].stripe_customer_id) {
+      return res.json({ paymentMethods: [], defaultPaymentMethodId: null });
+    }
+
+    const customerId = users[0].stripe_customer_id;
+    const customer = (await stripe.customers.retrieve(
+      customerId,
+    )) as Stripe.Customer;
+    const defaultPmId =
+      (customer.invoice_settings?.default_payment_method as string) || null;
+
+    const pmList = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: "card",
+    });
+
+    const paymentMethods = pmList.data.map((pm) => ({
+      id: pm.id,
+      brand: pm.card?.brand || "",
+      last4: pm.card?.last4 || "",
+      expMonth: pm.card?.exp_month || 0,
+      expYear: pm.card?.exp_year || 0,
+      isDefault: pm.id === defaultPmId,
+    }));
+
+    res.json({ paymentMethods, defaultPaymentMethodId: defaultPmId });
+  } catch (error) {
+    console.error("Error fetching payment methods:", error);
+    res.status(500).json({ error: "Error al obtener métodos de pago" });
+  }
+};
+
+/**
+ * POST /api/payment-methods/:id/default
+ * Set a saved payment method as the customer default.
+ */
+const handleSetDefaultPaymentMethod: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  const paymentMethodId = req.params.id;
+
+  try {
+    const [users] = await pool.query<any[]>(
+      "SELECT stripe_customer_id FROM users WHERE id = ?",
+      [userId],
+    );
+    if (users.length === 0 || !users[0].stripe_customer_id) {
+      return res.status(400).json({ error: "No Stripe customer found" });
+    }
+
+    // Verify ownership
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (pm.customer !== users[0].stripe_customer_id) {
+      return res
+        .status(403)
+        .json({ error: "Payment method does not belong to this customer" });
+    }
+
+    await stripe.customers.update(users[0].stripe_customer_id, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error setting default payment method:", error);
+    res
+      .status(500)
+      .json({ error: "Error al configurar método de pago predeterminado" });
+  }
+};
+
+/**
+ * DELETE /api/payment-methods/:id
+ * Detach a saved payment method from the customer.
+ */
+const handleRemovePaymentMethod: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  const paymentMethodId = req.params.id;
+
+  try {
+    const [users] = await pool.query<any[]>(
+      "SELECT stripe_customer_id FROM users WHERE id = ?",
+      [userId],
+    );
+    if (users.length === 0 || !users[0].stripe_customer_id) {
+      return res.status(400).json({ error: "No Stripe customer found" });
+    }
+
+    // Verify ownership before detaching
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (pm.customer !== users[0].stripe_customer_id) {
+      return res
+        .status(403)
+        .json({ error: "Payment method does not belong to this customer" });
+    }
+
+    await stripe.paymentMethods.detach(paymentMethodId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error removing payment method:", error);
+    res.status(500).json({ error: "Error al eliminar método de pago" });
+  }
+};
+
 /**
  * POST /api/create-payment-intent
  * Creates a Stripe PaymentIntent for subscription
@@ -1497,13 +1745,16 @@ const handleCreatePaymentIntent: RequestHandler = async (req, res) => {
         const [addressResult] = await pool.query<any>(
           `INSERT INTO addresses (
             user_id, full_name, street_address, street_address_2,
+            apartment_number, delivery_instructions,
             city, state_id, postal_code, phone, country, is_default
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             user.id,
             address.full_name,
             address.street_address,
             address.street_address_2,
+            address.apartment_number || null,
+            address.delivery_instructions || null,
             address.city,
             parseInt(address.state_id),
             address.postal_code,
@@ -1568,7 +1819,9 @@ const handleCreatePaymentIntent: RequestHandler = async (req, res) => {
       amount,
       currency: "mxn",
       customer: stripeCustomerId,
-      automatic_payment_methods: { enabled: true },
+      payment_method_types: ["card"],
+      setup_future_usage: "off_session",
+      automatic_payment_methods: { enabled: false },
       metadata: {
         planId: plan.plan_id,
         planName: plan.name,
@@ -1590,114 +1843,60 @@ const handleCreatePaymentIntent: RequestHandler = async (req, res) => {
 
 /**
  * POST /api/subscriptions
- * Create subscription record after successful payment
+ * Save card as default PM and create a real Stripe Subscription.
+ * Accepts: { paymentMethodId, planId, grindTypeId?, address? }
  */
 const handleCreateSubscription: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  const { paymentMethodId, planId, grindTypeId, address } = req.body;
+
+  if (!paymentMethodId || !planId) {
+    return res.status(400).json({
+      success: false,
+      error: "paymentMethodId and planId are required",
+    });
+  }
+
   try {
-    const authHeader = req.headers.authorization;
+    const [users] = await pool.query<any[]>(
+      "SELECT * FROM users WHERE id = ? AND is_active = 1",
+      [userId],
+    );
+    if (users.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+    const user = users[0];
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
-        success: false,
-        error: "No session token provided",
-      });
+    if (!user.stripe_customer_id) {
+      return res
+        .status(400)
+        .json({ error: "No Stripe customer linked to this account" });
     }
 
-    const sessionToken = authHeader.substring(7);
-    const decoded = jwt.verify(sessionToken, JWT_SECRET) as any;
-
-    if (decoded.userType !== "user") {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid session type",
-      });
+    // Verify PM belongs to this customer
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (pm.customer !== user.stripe_customer_id) {
+      return res
+        .status(403)
+        .json({ error: "Payment method does not belong to this customer" });
     }
 
-    const { paymentIntentId, planId, grindTypeId, address } = req.body;
-
-    console.log("Received subscription request:", {
-      paymentIntentId,
-      planId,
-      grindTypeId,
-      hasAddress: !!address,
-      address: address,
+    // Set as default payment method on customer
+    await stripe.customers.update(user.stripe_customer_id, {
+      invoice_settings: { default_payment_method: paymentMethodId },
     });
 
-    if (!paymentIntentId || !planId) {
-      return res.status(400).json({
-        success: false,
-        error: "paymentIntentId and planId are required",
-      });
-    }
-
-    // Validate address if provided
+    // ── Handle address ──────────────────────────────────────────────────
+    let shippingAddressId: number | null = null;
     if (address) {
-      const requiredFields = [
-        "full_name",
-        "street_address",
-        "city",
-        "state_id",
-        "postal_code",
-      ];
-      for (const field of requiredFields) {
-        if (!address[field]) {
-          return res.status(400).json({
-            success: false,
-            error: `Address field '${field}' is required`,
-          });
-        }
-      }
-    }
-
-    // Verify payment intent with Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-
-    if (paymentIntent.status !== "succeeded") {
-      return res.status(400).json({
-        success: false,
-        error: "Payment has not been completed",
-      });
-    }
-
-    // Check if subscription already exists for this payment intent
-    const [existingSubs] = await pool.query<any[]>(
-      "SELECT * FROM subscriptions WHERE stripe_subscription_id = ?",
-      [paymentIntentId],
-    );
-
-    if (existingSubs.length > 0) {
-      return res.json({
-        success: true,
-        subscription: existingSubs[0],
-        message: "Subscription already exists",
-      });
-    }
-
-    // Get addressId from PaymentIntent metadata (stored during payment intent creation)
-    let shippingAddressId = null;
-    if (paymentIntent.metadata?.addressId) {
-      shippingAddressId = parseInt(paymentIntent.metadata.addressId);
-      console.log(
-        "Retrieved address ID from PaymentIntent metadata:",
-        shippingAddressId,
-      );
-    } else if (address) {
-      // Fallback: if address is provided in request but not in metadata
-      console.log(
-        "No address in metadata, checking request body for address...",
-      );
-
-      // Check if user already has this address
       const [existingAddresses] = await pool.query<any[]>(
         `SELECT id FROM addresses 
-         WHERE user_id = ? 
-         AND street_address = ? 
-         AND city = ? 
-         AND state_id = ? 
-         AND postal_code = ?
+         WHERE user_id = ? AND street_address = ? AND city = ? AND state_id = ? AND postal_code = ?
          LIMIT 1`,
         [
-          decoded.userId,
+          userId,
           address.street_address,
           address.city,
           address.state_id,
@@ -1707,36 +1906,18 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
 
       if (existingAddresses.length > 0) {
         shippingAddressId = existingAddresses[0].id;
-        console.log("Using existing address:", shippingAddressId);
       } else {
-        // Create new address
-        console.log("Creating new address with data:", {
-          userId: decoded.userId,
-          full_name: address.full_name,
-          street_address: address.street_address,
-          city: address.city,
-          state_id: address.state_id,
-          postal_code: address.postal_code,
-        });
-
         const [addressResult] = await pool.query<any>(
-          `INSERT INTO addresses (
-            user_id,
-            full_name,
-            street_address,
-            street_address_2,
-            city,
-            state_id,
-            postal_code,
-            country,
-            phone,
-            is_default
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO addresses (user_id, full_name, street_address, street_address_2,
+            apartment_number, delivery_instructions, city, state_id, postal_code, country, phone, is_default)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            decoded.userId,
+            userId,
             address.full_name,
             address.street_address,
             address.street_address_2 || null,
+            address.apartment_number || null,
+            address.delivery_instructions || null,
             address.city,
             parseInt(address.state_id),
             address.postal_code,
@@ -1746,87 +1927,188 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
           ],
         );
         shippingAddressId = addressResult.insertId;
-        console.log("Created new address with ID:", shippingAddressId);
       }
-    } else {
-      console.log("No address provided in metadata or request");
     }
 
-    // Look up the actual plan ID from subscription_plans table
-    const [planRows] = await pool.query<any[]>(
-      "SELECT id FROM subscription_plans WHERE plan_id = ?",
+    // ── Resolve plan ────────────────────────────────────────────────────
+    const isTestMode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_");
+    const priceIdColumn = isTestMode
+      ? "stripe_price_id_test"
+      : "stripe_price_id_prod";
+
+    const [plans] = await pool.query<any[]>(
+      `SELECT *, ${priceIdColumn} as stripe_price_id FROM subscription_plans WHERE plan_id = ? AND is_active = 1`,
       [planId],
     );
+    if (plans.length === 0) {
+      return res.status(404).json({ error: "Plan no encontrado" });
+    }
+    const plan = plans[0];
 
-    if (planRows.length === 0) {
+    if (!plan.stripe_price_id) {
       return res.status(400).json({
-        success: false,
-        error: `Invalid plan: ${planId}`,
+        error: `Stripe Price ID no configurado para el entorno ${isTestMode ? "test" : "producción"}`,
       });
     }
 
-    const actualPlanId = planRows[0].id;
+    // ── Prevent duplicate active subscriptions ───────────────────────
+    const [existingActive] = await pool.query<any[]>(
+      "SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active'",
+      [userId],
+    );
+    if (existingActive.length > 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Ya tienes una suscripción activa" });
+    }
 
-    // Look up the actual grind type ID if grindTypeId is provided
-    let actualGrindTypeId = null;
+    // ── Create Stripe Subscription ───────────────────────────────────
+    const stripeSubscription = await stripe.subscriptions.create({
+      customer: user.stripe_customer_id,
+      items: [{ price: plan.stripe_price_id }],
+      default_payment_method: paymentMethodId,
+      payment_settings: {
+        payment_method_types: ["card"],
+        save_default_payment_method: "on_subscription",
+      },
+      expand: ["latest_invoice.payment_intent"],
+    });
+
+    // Handle 3DS / requires_action
+    const latestInvoice = stripeSubscription.latest_invoice as any;
+    const paymentIntent =
+      latestInvoice?.payment_intent as Stripe.PaymentIntent | null;
+
+    if (
+      stripeSubscription.status === "incomplete" &&
+      paymentIntent?.status === "requires_action"
+    ) {
+      return res.json({
+        success: false,
+        requiresAction: true,
+        clientSecret: paymentIntent.client_secret,
+        stripeSubscriptionId: stripeSubscription.id,
+      });
+    }
+
+    if (
+      stripeSubscription.status !== "active" &&
+      stripeSubscription.status !== "trialing"
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, error: "No se pudo confirmar el pago" });
+    }
+
+    // ── Resolve grind type ───────────────────────────────────────────
+    let actualGrindTypeId: number | null = null;
     if (grindTypeId) {
       const [grindRows] = await pool.query<any[]>(
         "SELECT id FROM grind_types WHERE code = ?",
         [grindTypeId],
       );
-
-      if (grindRows.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: `Invalid grind type: ${grindTypeId}`,
-        });
-      }
-
-      actualGrindTypeId = grindRows[0].id;
+      if (grindRows.length > 0) actualGrindTypeId = grindRows[0].id;
     }
 
-    // Create subscription record
-    const currentPeriodStart = new Date();
-    const currentPeriodEnd = new Date();
-    currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
+    // ── Get plan DB id ────────────────────────────────────────────────
+    const [planRows] = await pool.query<any[]>(
+      "SELECT id FROM subscription_plans WHERE plan_id = ?",
+      [planId],
+    );
+    const actualPlanId = planRows[0].id;
 
-    console.log("Creating subscription with:", {
-      userId: decoded.userId,
-      planId: actualPlanId,
-      grindTypeId: actualGrindTypeId,
-      shippingAddressId: shippingAddressId,
-      paymentIntentId: paymentIntentId,
-    });
+    // ── Insert subscription record ───────────────────────────────────
+    const sub = stripeSubscription as any;
+    const periodStart = new Date(
+      (sub.current_period_start ?? Date.now() / 1000) * 1000,
+    );
+    const periodEnd = new Date(
+      (sub.current_period_end ?? Date.now() / 1000 + 2592000) * 1000,
+    );
 
     const [result] = await pool.query<any>(
-      `INSERT INTO subscriptions (
-        user_id,
-        plan_id,
-        grind_type_id,
-        shipping_address_id,
-        stripe_subscription_id,
-        status,
-        current_period_start,
-        current_period_end,
-        cancel_at_period_end,
-        cancelled_at
-      ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, 0, NULL)`,
+      `INSERT INTO subscriptions
+         (user_id, plan_id, grind_type_id, shipping_address_id, stripe_subscription_id,
+          status, current_period_start, current_period_end, cancel_at_period_end, cancelled_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, 0, NULL)`,
       [
-        decoded.userId,
+        userId,
         actualPlanId,
         actualGrindTypeId,
         shippingAddressId,
-        paymentIntentId,
-        currentPeriodStart,
-        currentPeriodEnd,
+        stripeSubscription.id,
+        periodStart,
+        periodEnd,
       ],
     );
 
     const subscriptionId = result.insertId;
 
-    // Fetch created subscription with full details
+    // ── Create initial order + payment record ─────────────────────────
+    // We do this here (not only in the webhook) to avoid a race condition:
+    // the invoice.payment_succeeded webhook can arrive before this function
+    // finishes, find no subscription row, and silently skip order creation.
+    // The unique stripe_invoice_id constraint makes the webhook idempotent
+    // if it arrives later and tries to insert the same invoice again.
+    const invoiceId = latestInvoice?.id as string | null;
+    const invoicePaymentIntentId =
+      (latestInvoice?.payment_intent as Stripe.PaymentIntent)?.id ??
+      (latestInvoice?.payment_intent as string) ??
+      null;
+    const invoiceAmountPaid =
+      ((latestInvoice?.amount_paid as number) ?? 0) / 100;
+
+    const orderNumber = `BDC-${Date.now()}-${subscriptionId}`;
+    const [orderResult] = await pool.query<any>(
+      `INSERT INTO orders
+         (user_id, subscription_id, order_number, stripe_payment_intent_id,
+          stripe_invoice_id, total_amount, currency, status,
+          shipping_address_id, grind_type_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'MXN', 'processing', ?, ?)`,
+      [
+        userId,
+        subscriptionId,
+        orderNumber,
+        invoicePaymentIntentId,
+        invoiceId,
+        invoiceAmountPaid,
+        shippingAddressId ?? null,
+        actualGrindTypeId ?? null,
+      ],
+    );
+
+    await pool.query(
+      `INSERT INTO order_items (order_id, plan_id, quantity, unit_price, subtotal)
+       VALUES (?, ?, 1, ?, ?)`,
+      [
+        orderResult.insertId,
+        actualPlanId,
+        invoiceAmountPaid,
+        invoiceAmountPaid,
+      ],
+    );
+
+    await pool.query(
+      `INSERT INTO payments
+         (user_id, order_id, subscription_id, stripe_payment_id,
+          amount, currency, status, payment_method)
+       VALUES (?, ?, ?, ?, ?, 'MXN', 'succeeded', 'card')`,
+      [
+        userId,
+        orderResult.insertId,
+        subscriptionId,
+        invoicePaymentIntentId,
+        invoiceAmountPaid,
+      ],
+    );
+
+    console.log(
+      `[Subscription] ✅ Order ${orderNumber} created (invoice: ${invoiceId})`,
+    );
+
+    // ── Fetch full details for email ─────────────────────────────────
     const [subscriptions] = await pool.query<any[]>(
-      `SELECT s.*, 
+      `SELECT s.*,
               u.email, u.full_name,
               sp.name as plan_name, sp.weight, sp.price_mxn,
               gt.name as grind_type_name,
@@ -1876,10 +2158,11 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
       );
     }
 
-    res.json({
-      success: true,
-      subscription: subscription,
+    trackVisit(req, "subscription_complete", "/subscription-wizard", {
+      plan_id: planId,
     });
+
+    res.json({ success: true, subscription });
   } catch (error) {
     console.error("Error creating subscription:", error);
     res.status(500).json({
@@ -1890,20 +2173,479 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
   }
 };
 
+// =====================================================
+// VISITOR TRACKING
+// =====================================================
+
+/** Detect broad device category from user-agent string */
+function detectDevice(ua: string): "desktop" | "mobile" | "tablet" | "unknown" {
+  if (!ua) return "unknown";
+  if (/tablet|ipad|playbook|silk/i.test(ua)) return "tablet";
+  if (/mobile|android|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua))
+    return "mobile";
+  return "desktop";
+}
+
+/** Detect browser name from user-agent string */
+function detectBrowser(ua: string): string {
+  if (!ua) return "Unknown";
+  if (/edge|edg/i.test(ua)) return "Edge";
+  if (/chrome|crios/i.test(ua)) return "Chrome";
+  if (/firefox|fxios/i.test(ua)) return "Firefox";
+  if (/safari/i.test(ua)) return "Safari";
+  if (/opera|opr/i.test(ua)) return "Opera";
+  return "Other";
+}
+
+/** Detect OS from user-agent string */
+function detectOS(ua: string): string {
+  if (!ua) return "Unknown";
+  if (/windows/i.test(ua)) return "Windows";
+  if (/iphone|ipad|ipod/i.test(ua)) return "iOS";
+  if (/android/i.test(ua)) return "Android";
+  if (/macintosh|mac os/i.test(ua)) return "macOS";
+  if (/linux/i.test(ua)) return "Linux";
+  return "Other";
+}
+
+/** Extract real client IP respecting proxies/CDNs */
+function extractClientIP(req: express.Request): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) {
+    // x-forwarded-for may contain comma-separated IPs; first is the client
+    return (Array.isArray(forwarded) ? forwarded[0] : forwarded)
+      .split(",")[0]
+      .trim();
+  }
+  return (
+    (req.headers["cf-connecting-ip"] as string) ||
+    req.socket.remoteAddress ||
+    ""
+  );
+}
+
+type TrackEventType =
+  | "page_view"
+  | "click"
+  | "scroll"
+  | "form_submit"
+  | "subscription_start"
+  | "subscription_complete"
+  | "auth_open"
+  | "auth_success"
+  | "plan_select"
+  | "checkout_start"
+  | "checkout_complete"
+  | "payment_method_added"
+  | "payment_method_removed";
+
+/**
+ * Fire-and-forget helper — inserts a visitor event row.
+ * Called from within existing API handlers instead of a dedicated endpoint.
+ * Session ID is read from the X-Session-ID header sent by the axios interceptor.
+ * Never throws — tracking errors must never break the main request.
+ */
+async function trackVisit(
+  req: express.Request,
+  eventType: TrackEventType,
+  page: string,
+  metadata?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const sessionId = (req.headers["x-session-id"] as string) || "anonymous";
+
+    let userId: number | null = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      try {
+        const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
+        if (decoded?.userId) userId = decoded.userId as number;
+      } catch {
+        // expired / invalid token — anonymous
+      }
+    }
+
+    const ua = (req.headers["user-agent"] as string) || "";
+    const ip = extractClientIP(req);
+    const countryCode =
+      (req.headers["cf-ipcountry"] as string) ||
+      (req.headers["x-country-code"] as string) ||
+      null;
+    const referrer =
+      (req.headers["referer"] as string) ||
+      (req.headers["referrer"] as string) ||
+      null;
+
+    await pool.query(
+      `INSERT INTO visitor_events
+         (session_id, user_id, event_type, page, referrer,
+          ip_address, user_agent, device_type, browser, os,
+          country_code, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        sessionId.substring(0, 64),
+        userId,
+        eventType,
+        page.substring(0, 500),
+        referrer ? referrer.substring(0, 500) : null,
+        ip || null,
+        ua || null,
+        detectDevice(ua),
+        detectBrowser(ua),
+        detectOS(ua),
+        countryCode,
+        metadata ? JSON.stringify(metadata) : null,
+      ],
+    );
+  } catch (err) {
+    console.error("[trackVisit] Non-fatal tracking error:", err);
+  }
+}
+
+// =====================================================
+// CONSOLIDATED HOME ENDPOINT
+// =====================================================
+
+/**
+ * GET /api/home
+ * Single endpoint for the initial app load.
+ * Returns plans + grind types + states in one round-trip.
+ * Auth-optional: if a valid Bearer token is present the user object
+ * is included so the client can skip a separate validate call.
+ */
+const handleGetHome: RequestHandler = async (req, res) => {
+  try {
+    // Run the three "catalogue" queries in parallel
+    const [plansRows, grindRows, stateRows] = await Promise.all([
+      pool.query<any[]>(
+        `SELECT * FROM subscription_plans WHERE is_active = 1 ORDER BY price_mxn ASC`,
+      ),
+      pool.query<any[]>(
+        `SELECT * FROM grind_types WHERE is_active = 1 ORDER BY sort_order ASC`,
+      ),
+      pool.query<any[]>(
+        `SELECT * FROM mexico_states WHERE is_active = 1 ORDER BY name ASC`,
+      ),
+    ]);
+
+    // Attach features to plans
+    const plans = await Promise.all(
+      (plansRows[0] as any[]).map(async (plan) => {
+        const [features] = await pool.query<any[]>(
+          `SELECT feature_text FROM plan_features
+           WHERE plan_id = ? AND is_active = 1
+           ORDER BY sort_order ASC`,
+          [plan.id],
+        );
+        return { ...plan, features: features.map((f) => f.feature_text) };
+      }),
+    );
+
+    const grindTypes = grindRows[0] as any[];
+    const states = stateRows[0] as any[];
+
+    // Auth-optional: try to return user data if a valid token is provided
+    let user: Record<string, unknown> | null = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      try {
+        const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
+
+        if (decoded?.userType === "user") {
+          const [users] = await pool.query<any[]>(
+            "SELECT * FROM users WHERE id = ? AND is_active = 1",
+            [decoded.userId],
+          );
+          if (users.length > 0) {
+            const u = users[0];
+            user = {
+              id: u.id,
+              email: u.email,
+              full_name: u.full_name,
+              phone: u.phone,
+              email_verified: Boolean(u.email_verified),
+            };
+          }
+        }
+      } catch {
+        // expired / invalid token → return null user, not an error
+      }
+    }
+
+    // Track the page load (fire-and-forget)
+    trackVisit(req, "page_view", "/");
+
+    res.json({ plans, grindTypes, states, user });
+  } catch (error) {
+    console.error("[home] Error:", error);
+    res.status(500).json({
+      error: "Failed to load home data",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+// =====================================================
+// STRIPE WEBHOOK SUB-HANDLERS
+// =====================================================
+
+/**
+ * invoice.payment_succeeded
+ * Fires on the initial charge AND every monthly renewal.
+ * Creates an order + payment record and syncs subscription period dates.
+ */
+async function processInvoicePaymentSucceeded(
+  invoice: Stripe.Invoice,
+): Promise<void> {
+  const inv = invoice as any;
+  const stripeSubscriptionId = inv.subscription as string | null;
+  if (!stripeSubscriptionId) return; // one-off charge, not a subscription
+
+  // Find our internal subscription row
+  const [subs] = await pool.query<any[]>(
+    "SELECT * FROM subscriptions WHERE stripe_subscription_id = ?",
+    [stripeSubscriptionId],
+  );
+  if (subs.length === 0) {
+    console.log(
+      `[Webhook] Subscription not found in DB: ${stripeSubscriptionId}`,
+    );
+    return;
+  }
+  const sub = subs[0];
+
+  // Idempotency — skip if we already processed this exact invoice
+  const [existingOrders] = await pool.query<any[]>(
+    "SELECT id FROM orders WHERE stripe_invoice_id = ?",
+    [invoice.id],
+  );
+  if (existingOrders.length > 0) {
+    console.log(`[Webhook] Invoice ${invoice.id} already processed, skipping`);
+    return;
+  }
+
+  // Sync subscription period dates and reset status to active
+  await pool.query(
+    `UPDATE subscriptions
+     SET status = 'active',
+         current_period_start = FROM_UNIXTIME(?),
+         current_period_end   = FROM_UNIXTIME(?),
+         updated_at = NOW()
+     WHERE id = ?`,
+    [
+      inv.period_start ?? Math.floor(Date.now() / 1000),
+      inv.period_end ?? Math.floor(Date.now() / 1000) + 2592000,
+      sub.id,
+    ],
+  );
+
+  // Create order record
+  const orderNumber = `BDC-${Date.now()}-${sub.id}`;
+  const amount = (inv.amount_paid ?? 0) / 100; // Stripe stores cents
+  const [orderResult] = await pool.query<any>(
+    `INSERT INTO orders
+       (user_id, subscription_id, order_number, stripe_payment_intent_id,
+        stripe_invoice_id, total_amount, currency, status,
+        shipping_address_id, grind_type_id)
+     VALUES (?, ?, ?, ?, ?, ?, 'MXN', 'processing', ?, ?)`,
+    [
+      sub.user_id,
+      sub.id,
+      orderNumber,
+      (inv.payment_intent as string) ?? null,
+      inv.id,
+      amount,
+      sub.shipping_address_id ?? null,
+      sub.grind_type_id ?? null,
+    ],
+  );
+
+  // Create payment record
+  await pool.query(
+    `INSERT INTO payments
+       (user_id, order_id, subscription_id, stripe_payment_id,
+        amount, currency, status, payment_method)
+     VALUES (?, ?, ?, ?, ?, 'MXN', 'succeeded', 'card')`,
+    [
+      sub.user_id,
+      orderResult.insertId,
+      sub.id,
+      (inv.payment_intent as string) ?? null,
+      amount,
+    ],
+  );
+
+  // Create order item for the plan
+  const [planRows] = await pool.query<any[]>(
+    "SELECT id FROM subscription_plans WHERE id = ?",
+    [sub.plan_id],
+  );
+  if (planRows.length > 0) {
+    await pool.query(
+      `INSERT INTO order_items (order_id, plan_id, quantity, unit_price, subtotal)
+       VALUES (?, ?, 1, ?, ?)`,
+      [orderResult.insertId, planRows[0].id, amount, amount],
+    );
+  }
+
+  console.log(
+    `[Webhook] ✅ Order ${orderNumber} created for subscription ${sub.id}`,
+  );
+}
+
+/**
+ * invoice.payment_failed
+ * Fires when a renewal charge is declined.
+ * Sets subscription to past_due and records the failed payment.
+ */
+async function processInvoicePaymentFailed(
+  invoice: Stripe.Invoice,
+): Promise<void> {
+  const inv = invoice as any;
+  const stripeSubscriptionId = inv.subscription as string | null;
+  if (!stripeSubscriptionId) return;
+
+  await pool.query(
+    `UPDATE subscriptions SET status = 'past_due', updated_at = NOW()
+     WHERE stripe_subscription_id = ?`,
+    [stripeSubscriptionId],
+  );
+
+  const [subs] = await pool.query<any[]>(
+    "SELECT id, user_id FROM subscriptions WHERE stripe_subscription_id = ?",
+    [stripeSubscriptionId],
+  );
+  if (subs.length === 0) return;
+  const sub = subs[0];
+
+  const failureReason =
+    inv.last_finalization_error?.message || "Payment declined";
+
+  await pool.query(
+    `INSERT INTO payments
+       (user_id, subscription_id, stripe_payment_id,
+        amount, currency, status, failure_reason)
+     VALUES (?, ?, ?, ?, 'MXN', 'failed', ?)`,
+    [
+      sub.user_id,
+      sub.id,
+      (inv.payment_intent as string) ?? null,
+      (inv.amount_due ?? 0) / 100,
+      failureReason,
+    ],
+  );
+
+  console.log(`[Webhook] ❌ Payment failed for subscription ${sub.id}`);
+}
+
+/**
+ * customer.subscription.updated
+ * Fires whenever Stripe changes subscription status or renews the period.
+ * Keeps our DB status and period dates in sync.
+ */
+async function processSubscriptionUpdated(
+  subscription: Stripe.Subscription,
+): Promise<void> {
+  const sub = subscription as any;
+  // Stripe uses "canceled" (one 'l'), our DB uses "cancelled"
+  const status =
+    subscription.status === "canceled" ? "cancelled" : subscription.status;
+
+  await pool.query(
+    `UPDATE subscriptions
+     SET status = ?,
+         current_period_start = FROM_UNIXTIME(?),
+         current_period_end   = FROM_UNIXTIME(?),
+         cancel_at_period_end = ?,
+         updated_at = NOW()
+     WHERE stripe_subscription_id = ?`,
+    [
+      status,
+      sub.current_period_start,
+      sub.current_period_end,
+      subscription.cancel_at_period_end ? 1 : 0,
+      subscription.id,
+    ],
+  );
+
+  console.log(`[Webhook] Subscription ${subscription.id} updated → ${status}`);
+}
+
+/**
+ * customer.subscription.deleted
+ * Fires when a subscription is fully cancelled (period has ended or immediate cancel).
+ */
+async function processSubscriptionDeleted(
+  subscription: Stripe.Subscription,
+): Promise<void> {
+  await pool.query(
+    `UPDATE subscriptions
+     SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+     WHERE stripe_subscription_id = ?`,
+    [subscription.id],
+  );
+
+  console.log(`[Webhook] Subscription ${subscription.id} deleted/cancelled`);
+}
+
 /**
  * POST /api/webhook
- * Stripe webhook handler (placeholder)
+ * Stripe webhook — receives real-time subscription and payment events.
+ * IMPORTANT: registered BEFORE express.json() so the body stays as a raw
+ * Buffer for Stripe signature verification.
  */
-const handleWebhook: RequestHandler = async (_req, res) => {
-  try {
-    // TODO: Implement Stripe webhook verification and handling
-    // const sig = req.headers['stripe-signature'];
-    // const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+const handleWebhook: RequestHandler = async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+  if (!webhookSecret) {
+    console.error("[Webhook] STRIPE_WEBHOOK_SECRET not configured");
+    return res.status(500).json({ error: "Webhook secret not configured" });
+  }
+
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body as Buffer,
+      sig as string,
+      webhookSecret,
+    );
+  } catch (err: any) {
+    console.error("[Webhook] Signature verification failed:", err.message);
+    return res
+      .status(400)
+      .json({ error: `Webhook signature error: ${err.message}` });
+  }
+
+  try {
+    switch (event.type) {
+      case "invoice.payment_succeeded":
+        await processInvoicePaymentSucceeded(
+          event.data.object as Stripe.Invoice,
+        );
+        break;
+      case "invoice.payment_failed":
+        await processInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
+      case "customer.subscription.updated":
+        await processSubscriptionUpdated(
+          event.data.object as Stripe.Subscription,
+        );
+        break;
+      case "customer.subscription.deleted":
+        await processSubscriptionDeleted(
+          event.data.object as Stripe.Subscription,
+        );
+        break;
+      default:
+        // Ignore unhandled event types
+        break;
+    }
     res.json({ received: true });
   } catch (error) {
-    console.error("Webhook error:", error);
-    res.status(400).json({ error: "Webhook error" });
+    // Return 500 so Stripe retries on transient DB errors
+    console.error("[Webhook] Processing error:", error);
+    res.status(500).json({ error: "Internal webhook processing error" });
   }
 };
 
@@ -1918,6 +2660,16 @@ function createServer() {
   console.log("Creating Express server for Vercel...");
 
   const app = express();
+
+  // Webhook MUST be registered BEFORE the global express.json() middleware.
+  // Stripe signature verification requires the raw request body (a Buffer).
+  // If express.json() runs first, the body becomes a parsed JS object and
+  // stripe.webhooks.constructEvent() will throw a signature mismatch error.
+  app.post(
+    "/api/webhook",
+    express.raw({ type: "application/json" }),
+    handleWebhook,
+  );
 
   // Middleware
   app.use(cors());
@@ -1935,6 +2687,9 @@ function createServer() {
   // Health & ping
   app.get("/api/ping", handlePing);
 
+  // Consolidated home (plans + grind-types + states + optional user)
+  app.get("/api/home", handleGetHome);
+
   // Subscription & products
   app.get("/api/plans", handleGetPlans);
   app.get("/api/grind-types", handleGetGrindTypes);
@@ -1949,6 +2704,9 @@ function createServer() {
 
   // Business inquiries
   app.post("/api/business-inquiries", handleCreateBusinessInquiry);
+
+  // Help Center
+  app.post("/api/help/contact", handleSubmitContact);
 
   // User dashboard (authenticated)
   app.get("/api/user/subscription", handleGetMySubscription);
@@ -1968,12 +2726,18 @@ function createServer() {
     "/api/create-payment-intent",
     handleCreatePaymentIntent as RequestHandler,
   );
-  app.post("/api/subscriptions", handleCreateSubscription);
+  // Payment methods (save-card flow)
+  app.post("/api/payment-methods/setup", handleCreateSetupIntent);
+  app.get("/api/payment-methods", handleGetPaymentMethods);
   app.post(
-    "/api/webhook",
-    express.raw({ type: "application/json" }),
-    handleWebhook,
+    "/api/payment-methods/:id/default",
+    handleSetDefaultPaymentMethod as RequestHandler,
   );
+  app.delete(
+    "/api/payment-methods/:id",
+    handleRemovePaymentMethod as RequestHandler,
+  );
+  app.post("/api/subscriptions", handleCreateSubscription);
 
   // Demo
   app.get("/api/demo", handleDemo);

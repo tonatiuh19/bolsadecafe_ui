@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useFormik } from "formik";
 import * as Yup from "yup";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements } from "@stripe/react-stripe-js";
 import {
   Sheet,
   SheetContent,
@@ -42,8 +44,12 @@ import {
   Calendar,
   Coffee,
   Loader2,
+  Plus,
+  Star,
+  Trash2,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { logger } from "@/utils/logger";
 import {
   fetchMySubscription,
   updateShippingAddress,
@@ -52,9 +58,28 @@ import {
   cancelSubscription,
   openBillingPortal,
   clearActionState,
+  setManagedSubscription,
 } from "@/store/slices/dashboardSlice";
+import {
+  createSetupIntent,
+  fetchPaymentMethods,
+  setDefaultPaymentMethod,
+  removePaymentMethod,
+  selectPaymentMethods,
+  selectPaymentMethodsLoading,
+  selectPaymentMethodsError,
+  clearPaymentState,
+  selectClientSecret,
+  selectPaymentLoading,
+  selectPaymentError,
+} from "@/store/slices/paymentsSlice";
+import StripeCheckoutForm from "@/components/StripeCheckoutForm";
 import { fetchStates } from "@/store/slices/statesSlice";
 import { fetchPlans } from "@/store/slices/plansSlice";
+
+const stripePromise = loadStripe(
+  import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "",
+);
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -149,11 +174,34 @@ function ActionRow({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-type ActiveDialog = "address" | "contact" | "plan" | "cancel" | null;
+type ActiveDialog =
+  | "address"
+  | "contact"
+  | "plan"
+  | "cancel"
+  | "addCard"
+  | null;
+
+function CardBrandBadge({ brand }: { brand: string }) {
+  const labels: Record<string, string> = {
+    visa: "VISA",
+    mastercard: "MC",
+    amex: "AMEX",
+    discover: "DISC",
+    jcb: "JCB",
+    unionpay: "UP",
+  };
+  return (
+    <span className="inline-flex items-center justify-center w-10 h-6 rounded bg-neutral-100 text-neutral-700 font-bold text-xs border border-neutral-200">
+      {labels[brand] ?? brand.toUpperCase().slice(0, 4)}
+    </span>
+  );
+}
 
 export default function UserDashboard({ open, onClose }: UserDashboardProps) {
   const dispatch = useAppDispatch();
   const {
+    subscriptions,
     subscription,
     loading,
     error,
@@ -167,10 +215,32 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
   } = useAppSelector((s) => s.dashboard);
   const { states } = useAppSelector((s) => s.states);
   const { plans } = useAppSelector((s) => s.plans);
+  const paymentMethods = useAppSelector(selectPaymentMethods);
+  const paymentMethodsLoading = useAppSelector(selectPaymentMethodsLoading);
+  const setupClientSecret = useAppSelector(selectClientSecret);
+  const setupLoading = useAppSelector(selectPaymentLoading);
+  const setupError = useAppSelector(selectPaymentError);
+  const paymentMethodsError = useAppSelector(selectPaymentMethodsError);
 
   const [dialog, setDialog] = useState<ActiveDialog>(null);
   const [cancelPhrase, setCancelPhrase] = useState("");
   const [showDanger, setShowDanger] = useState(false);
+
+  // ── Radix scroll-lock cleanup ─────────────────────────────────────────────
+  // Radix UI Dialog (Sheet is built on it) sets `pointer-events: none` on the
+  // body via @radix-ui/react-remove-scroll. With multiple sibling Dialog portals
+  // (Sheet + the 5 action Dialogs), the internal ref-counter that tracks open
+  // layers can get stuck > 0, permanently blocking all page clicks after close.
+  // We force-clean body styles once the 300ms exit animation has finished.
+  useEffect(() => {
+    if (!open) {
+      const t = setTimeout(() => {
+        document.body.style.pointerEvents = "";
+        document.body.removeAttribute("data-scroll-locked");
+      }, 350);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
 
   // Load data when sheet opens
   useEffect(() => {
@@ -178,6 +248,7 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
       dispatch(fetchMySubscription());
       dispatch(fetchStates());
       dispatch(fetchPlans());
+      dispatch(fetchPaymentMethods());
     }
   }, [open, dispatch]);
 
@@ -199,6 +270,9 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
       fullName: subscription?.shippingAddress?.fullName ?? "",
       streetAddress: subscription?.shippingAddress?.streetAddress ?? "",
       streetAddress2: subscription?.shippingAddress?.streetAddress2 ?? "",
+      apartmentNumber: subscription?.shippingAddress?.apartmentNumber ?? "",
+      deliveryInstructions:
+        subscription?.shippingAddress?.deliveryInstructions ?? "",
       city: subscription?.shippingAddress?.city ?? "",
       stateId: subscription?.shippingAddress?.stateId?.toString() ?? "",
       postalCode: subscription?.shippingAddress?.postalCode ?? "",
@@ -221,6 +295,8 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
           fullName: values.fullName,
           streetAddress: values.streetAddress,
           streetAddress2: values.streetAddress2 || undefined,
+          apartmentNumber: values.apartmentNumber || undefined,
+          deliveryInstructions: values.deliveryInstructions || undefined,
           city: values.city,
           stateId: Number(values.stateId),
           postalCode: values.postalCode,
@@ -293,7 +369,22 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
 
   return (
     <>
-      <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <Sheet
+        open={open}
+        onOpenChange={(v) => {
+          if (!v) {
+            // Reset all internal state so nothing leaks across open/close cycles.
+            // Critically: the Dialog components are rendered OUTSIDE the Sheet
+            // (as siblings), so any open dialog would leave an invisible Radix
+            // overlay blocking pointer events across the whole page.
+            setDialog(null);
+            setCancelPhrase("");
+            setShowDanger(false);
+            dispatch(clearPaymentState());
+            onClose();
+          }
+        }}
+      >
         <SheetContent className="w-full sm:max-w-md overflow-y-auto p-0">
           {/* Header */}
           <div className="bg-gradient-to-br from-neutral-100 via-brand-50 to-white px-6 pt-8 pb-6 border-b border-neutral-100">
@@ -326,10 +417,52 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
               </Alert>
             )}
 
+            {/* Subscription list (multi) */}
+            {!loading && subscriptions.length > 1 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400 mb-3">
+                  Mis Suscripciones
+                </p>
+                <div className="space-y-2">
+                  {subscriptions.map((sub) => (
+                    <button
+                      key={sub.id}
+                      onClick={() => dispatch(setManagedSubscription(sub))}
+                      className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all text-left
+                        ${
+                          subscription?.id === sub.id
+                            ? "border-brand-500 bg-brand-50 ring-1 ring-brand-400"
+                            : "border-neutral-100 hover:border-brand-200 bg-white"
+                        }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-neutral-800 truncate">
+                          {sub.planName}
+                        </p>
+                        <p className="text-xs text-neutral-400">
+                          {sub.grindTypeName}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-2">
+                        <span
+                          className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                            STATUS_COLORS[sub.status] ?? STATUS_COLORS.active
+                          }`}
+                        >
+                          {STATUS_LABELS[sub.status] ?? sub.status}
+                        </span>
+                        <ChevronRight className="h-3.5 w-3.5 text-neutral-300" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Subscription card */}
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400 mb-3">
-                Suscripción Activa
+                {subscriptions.length > 1 ? "Detalle" : "Suscripción Activa"}
               </p>
 
               {loading ? (
@@ -452,13 +585,92 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                       description="Quién recibe el paquete"
                       onClick={() => openDialog("contact")}
                     />
-                    <ActionRow
-                      icon={CreditCard}
-                      label="Método de Pago"
-                      description="Administra tu tarjeta en Stripe"
-                      onClick={handleOpenPortal}
-                      loading={openingPortal}
-                    />
+                  </div>
+
+                  {/* ── Payment methods ──────────────────────────────────── */}
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2 px-1">
+                      Métodos de Pago
+                    </p>
+                    {paymentMethodsLoading ? (
+                      <div className="flex items-center gap-2 p-3 text-neutral-400 text-sm">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Cargando tarjetas…
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {paymentMethodsError && (
+                          <p className="text-xs text-red-500 px-1">
+                            {paymentMethodsError}
+                          </p>
+                        )}
+                        {paymentMethods.map((pm) => (
+                          <div
+                            key={pm.id}
+                            className="flex items-center gap-3 p-3 rounded-xl border border-neutral-100 bg-white"
+                          >
+                            <CardBrandBadge brand={pm.brand} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-neutral-800">
+                                •••• {pm.last4}
+                              </p>
+                              <p className="text-xs text-neutral-400">
+                                Vence {pm.expMonth}/{pm.expYear}
+                              </p>
+                            </div>
+                            {pm.isDefault ? (
+                              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
+                                <Star className="h-3 w-3 mr-1" />
+                                Predeterminada
+                              </Badge>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  dispatch(setDefaultPaymentMethod(pm.id)).then(
+                                    () => dispatch(fetchPaymentMethods()),
+                                  )
+                                }
+                                className="text-xs text-brand-600 hover:text-brand-800 font-medium"
+                              >
+                                Predeterminar
+                              </button>
+                            )}
+                            <button
+                              onClick={() =>
+                                dispatch(removePaymentMethod(pm.id)).then(() =>
+                                  dispatch(fetchPaymentMethods()),
+                                )
+                              }
+                              className="text-neutral-300 hover:text-red-500 transition-colors ml-1"
+                              title="Eliminar tarjeta"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          onClick={async () => {
+                            dispatch(clearPaymentState());
+                            await dispatch(createSetupIntent());
+                            openDialog("addCard");
+                          }}
+                          disabled={setupLoading}
+                          className="w-full flex items-center gap-3 p-3 rounded-xl border border-dashed border-brand-200 text-brand-600 hover:border-brand-400 hover:bg-brand-50/50 transition-all text-sm font-medium"
+                        >
+                          {setupLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Plus className="h-4 w-4" />
+                          )}
+                          Agregar tarjeta
+                        </button>
+                        {setupError && (
+                          <p className="text-xs text-red-500 px-1">
+                            {setupError}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* ── Danger zone ─────────────────────────────────────── */}
@@ -540,7 +752,10 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                       <p className="text-xs text-neutral-500">{plan.weight}</p>
                     </div>
                     <p className="font-bold text-brand-700">
-                      ${Number(plan.price).toLocaleString("es-MX")}
+                      $
+                      {Number(plan.price_mxn ?? plan.price).toLocaleString(
+                        "es-MX",
+                      )}
                       <span className="text-xs font-normal text-neutral-400">
                         /mes
                       </span>
@@ -613,12 +828,22 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
               </div>
               <div className="col-span-2">
                 <Label>
-                  Colonia / Interior{" "}
+                  Colonia / Municipio{" "}
                   <span className="text-neutral-400">(opcional)</span>
                 </Label>
                 <Input
                   {...addressForm.getFieldProps("streetAddress2")}
-                  placeholder="Colonia, depto, etc."
+                  placeholder="Colonia, delegación, etc."
+                />
+              </div>
+              <div className="col-span-2">
+                <Label>
+                  Departamento / Interior{" "}
+                  <span className="text-neutral-400">(opcional)</span>
+                </Label>
+                <Input
+                  {...addressForm.getFieldProps("apartmentNumber")}
+                  placeholder="Depto 4B, Piso 3, Interior 201..."
                 />
               </div>
               <div>
@@ -677,6 +902,18 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                 <Input
                   {...addressForm.getFieldProps("phone")}
                   placeholder="+52 555 000 0000"
+                />
+              </div>
+              <div className="col-span-2">
+                <Label>
+                  Instrucciones de entrega{" "}
+                  <span className="text-neutral-400">(opcional)</span>
+                </Label>
+                <textarea
+                  {...addressForm.getFieldProps("deliveryInstructions")}
+                  placeholder="Ej: Tocar timbre 2 veces, dejar con portero..."
+                  rows={2}
+                  className="w-full text-sm p-2.5 border border-neutral-200 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
                 />
               </div>
             </div>
@@ -822,6 +1059,48 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Add Card ───────────────────────────────────────────────── */}
+      <Dialog
+        open={dialog === "addCard"}
+        onOpenChange={(v) => {
+          if (!v) {
+            setDialog(null);
+            dispatch(clearPaymentState());
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-brand-600" />
+              Agregar Tarjeta
+            </DialogTitle>
+          </DialogHeader>
+          {setupClientSecret ? (
+            <Elements
+              stripe={stripePromise}
+              options={{ clientSecret: setupClientSecret }}
+            >
+              <StripeCheckoutForm
+                clientSecret={setupClientSecret}
+                onSuccess={async () => {
+                  setDialog(null);
+                  dispatch(clearPaymentState());
+                  dispatch(fetchPaymentMethods());
+                }}
+                onError={(err) => {
+                  logger.error("Add card error:", err);
+                }}
+              />
+            </Elements>
+          ) : (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </>

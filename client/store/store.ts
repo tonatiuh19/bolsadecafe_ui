@@ -6,9 +6,12 @@ import authReducer from "./slices/authSlice";
 import paymentsReducer from "./slices/paymentsSlice";
 import subscriptionWizardReducer from "./slices/subscriptionWizardSlice";
 import dashboardReducer from "./slices/dashboardSlice";
+import helpReducer from "./slices/helpSlice";
+import homeReducer from "./slices/homeSlice";
 
 export const store = configureStore({
   reducer: {
+    home: homeReducer,
     plans: plansReducer,
     grindTypes: grindTypesReducer,
     states: statesReducer,
@@ -16,6 +19,7 @@ export const store = configureStore({
     payments: paymentsReducer,
     subscriptionWizard: subscriptionWizardReducer,
     dashboard: dashboardReducer,
+    help: helpReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

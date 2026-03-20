@@ -280,6 +280,8 @@ export interface UserSubscriptionDetail {
     fullName: string;
     streetAddress: string;
     streetAddress2?: string;
+    apartmentNumber?: string;
+    deliveryInstructions?: string;
     city: string;
     state: string;
     stateId: number;
@@ -290,7 +292,7 @@ export interface UserSubscriptionDetail {
 
 export interface UserSubscriptionResponse {
   success: boolean;
-  subscription: UserSubscriptionDetail | null;
+  subscriptions: UserSubscriptionDetail[];
 }
 
 export interface UpdateAddressRequest {
@@ -298,6 +300,8 @@ export interface UpdateAddressRequest {
   fullName: string;
   streetAddress: string;
   streetAddress2?: string;
+  apartmentNumber?: string;
+  deliveryInstructions?: string;
   city: string;
   stateId: number;
   postalCode: string;
@@ -340,4 +344,131 @@ export interface CancelSubscriptionResponse {
 export interface BillingPortalResponse {
   success: boolean;
   url: string;
+}
+
+// ─── Payment Methods ──────────────────────────────────────────────────────────
+
+export interface SavedPaymentMethod {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  isDefault: boolean;
+}
+
+export interface SetupIntentResponse {
+  clientSecret: string;
+}
+
+export interface PaymentMethodsResponse {
+  paymentMethods: SavedPaymentMethod[];
+  defaultPaymentMethodId: string | null;
+}
+
+export interface CreateSubscriptionRequest {
+  paymentMethodId: string;
+  planId: string;
+  grindTypeId?: string;
+  address?: {
+    full_name: string;
+    street_address: string;
+    street_address_2?: string | null;
+    apartment_number?: string | null;
+    delivery_instructions?: string | null;
+    city: string;
+    state_id: number;
+    postal_code: string;
+    country?: string;
+    phone?: string | null;
+    is_default?: number;
+  };
+}
+
+export interface CreateSubscriptionResponse {
+  success: boolean;
+  subscription?: any;
+  requiresAction?: boolean;
+  clientSecret?: string;
+  stripeSubscriptionId?: string;
+  error?: string;
+}
+
+// ─── Help Center / Contact Form ───────────────────────────────────────────────
+
+export type ContactTopic =
+  | "suscripcion"
+  | "pagos"
+  | "envios"
+  | "cuenta"
+  | "producto"
+  | "otro";
+
+export interface SubmitContactRequest {
+  name: string;
+  email: string;
+  topic: ContactTopic;
+  subject: string;
+  message: string;
+}
+
+export interface SubmitContactResponse {
+  success: boolean;
+  message: string;
+  submissionId: number;
+}
+
+// ─── Home (consolidated initial load) ────────────────────────────────────────
+
+/** Minimal user shape returned by GET /api/home when a valid token is sent */
+export interface HomeUser {
+  id: number;
+  email: string;
+  full_name: string;
+  phone?: string;
+  email_verified: boolean;
+}
+
+/** Single endpoint response — replaces separate /api/plans, /api/grind-types,
+ *  /api/states, and /api/auth/validate round-trips */
+export interface HomeResponse {
+  plans: SubscriptionPlan[];
+  grindTypes: GrindType[];
+  states: MexicoState[];
+  user: HomeUser | null;
+}
+
+// ─── Visitor Tracking ─────────────────────────────────────────────────────────
+
+export type VisitorEventType =
+  | "page_view"
+  | "click"
+  | "scroll"
+  | "form_submit"
+  | "subscription_start"
+  | "subscription_complete"
+  | "auth_open"
+  | "auth_success"
+  | "plan_select"
+  | "checkout_start"
+  | "checkout_complete"
+  | "payment_method_added"
+  | "payment_method_removed";
+
+export interface TrackEventRequest {
+  session_id: string;
+  event_type?: VisitorEventType;
+  page: string;
+  referrer?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_term?: string;
+  utm_content?: string;
+  duration_ms?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface TrackEventResponse {
+  success: boolean;
 }
