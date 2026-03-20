@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import Stripe from "stripe";
+import bcrypt from "bcryptjs";
 
 const JWT_SECRET =
   process.env.JWT_SECRET || "your-secret-key-change-in-production";
@@ -204,6 +205,105 @@ async function sendSubscriptionConfirmationEmail(
   } catch (error) {
     console.error("Error sending subscription confirmation email:", error);
     // Don't throw error - email failure shouldn't block subscription creation
+  }
+}
+
+/**
+ * Send new-order notification to all active admins
+ */
+async function sendAdminNewOrderNotification(orderDetails: {
+  orderNumber: string;
+  userName: string;
+  userEmail: string;
+  planName: string;
+  amount: number;
+  subscriptionId: number;
+}): Promise<void> {
+  try {
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) return;
+
+    const [admins] = await pool.query<any[]>(
+      "SELECT email, full_name FROM admins WHERE is_active = 1",
+    );
+    if (admins.length === 0) return;
+
+    const transporter = createMailTransporter();
+    await transporter.verify();
+
+    const adminUrl = process.env.FRONTEND_URL
+      ? `${process.env.FRONTEND_URL}/admin/subscriptions`
+      : "http://localhost:5173/admin/subscriptions";
+
+    const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+    <body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px;">
+        <tr><td>
+          <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+            <!-- Header -->
+            <tr>
+              <td style="background:linear-gradient(135deg,#0d1b3e 0%,#152a63 60%,#1d3c89 100%);padding:28px 30px;text-align:center;">
+                <img src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png" alt="Bolsadecafé" style="height:36px;width:auto;display:block;margin:0 auto 12px;" />
+                <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:100px;padding:6px 14px;">
+                  <span style="font-size:13px;color:rgba(255,255,255,0.9);font-weight:600;">📦 Nueva Orden Creada</span>
+                </div>
+              </td>
+            </tr>
+            <!-- Body -->
+            <tr>
+              <td style="padding:32px 30px 24px;">
+                <p style="margin:0 0 6px;font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;font-weight:600;">Número de orden</p>
+                <p style="margin:0 0 24px;font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-.3px;">${orderDetails.orderNumber}</p>
+
+                <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+                  <tr style="background:#f8fafc;">
+                    <td style="padding:12px 16px;font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Cliente</td>
+                    <td style="padding:12px 16px;font-size:14px;color:#0f172a;font-weight:600;text-align:right;">${orderDetails.userName}<br><span style="color:#64748b;font-weight:400;font-size:13px;">${orderDetails.userEmail}</span></td>
+                  </tr>
+                  <tr style="border-top:1px solid #e2e8f0;">
+                    <td style="padding:12px 16px;font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Plan</td>
+                    <td style="padding:12px 16px;font-size:14px;color:#0f172a;font-weight:600;text-align:right;">${orderDetails.planName}</td>
+                  </tr>
+                  <tr style="border-top:1px solid #e2e8f0;background:#f8fafc;">
+                    <td style="padding:12px 16px;font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Monto</td>
+                    <td style="padding:12px 16px;font-size:18px;color:#152a63;font-weight:800;text-align:right;">$${orderDetails.amount.toFixed(2)} MXN</td>
+                  </tr>
+                </table>
+
+                <div style="margin-top:28px;text-align:center;">
+                  <a href="${adminUrl}" style="display:inline-block;background:linear-gradient(135deg,#152a63,#1d3c89);color:#fff;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:700;font-size:14px;letter-spacing:-.1px;">Ver en el panel →</a>
+                </div>
+              </td>
+            </tr>
+            <!-- Footer -->
+            <tr>
+              <td style="padding:20px 30px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+                <p style="margin:0;font-size:12px;color:#94a3b8;">Notificación automática · Bolsa de Café Admin Panel</p>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </body>
+    </html>`;
+
+    const adminEmails = admins.map((a) => a.email).join(", ");
+    await transporter.sendMail({
+      from:
+        process.env.SMTP_FROM || `"Bolsa de Café" <${process.env.SMTP_USER}>`,
+      to: adminEmails,
+      subject: `📦 Nueva orden ${orderDetails.orderNumber} — $${orderDetails.amount.toFixed(2)} MXN`,
+      html,
+    });
+
+    console.log(
+      `[Webhook] 📧 Admin notification sent for order ${orderDetails.orderNumber} → ${adminEmails}`,
+    );
+  } catch (err) {
+    console.error("[Webhook] Failed to send admin order notification:", err);
+    // Non-blocking — don't rethrow
   }
 }
 
@@ -2477,7 +2577,7 @@ async function processInvoicePaymentSucceeded(
 
   // Create order item for the plan
   const [planRows] = await pool.query<any[]>(
-    "SELECT id FROM subscription_plans WHERE id = ?",
+    "SELECT id, name FROM subscription_plans WHERE id = ?",
     [sub.plan_id],
   );
   if (planRows.length > 0) {
@@ -2487,6 +2587,24 @@ async function processInvoicePaymentSucceeded(
       [orderResult.insertId, planRows[0].id, amount, amount],
     );
   }
+
+  // Fetch user info for admin notification
+  const [userRows] = await pool.query<any[]>(
+    "SELECT full_name, email FROM users WHERE id = ?",
+    [sub.user_id],
+  );
+  const user = userRows[0] ?? { full_name: "Cliente", email: "" };
+  const planName = planRows[0]?.name ?? `Plan #${sub.plan_id}`;
+
+  // Notify all active admins
+  await sendAdminNewOrderNotification({
+    orderNumber,
+    userName: user.full_name,
+    userEmail: user.email,
+    planName,
+    amount,
+    subscriptionId: sub.id,
+  });
 
   console.log(
     `[Webhook] ✅ Order ${orderNumber} created for subscription ${sub.id}`,
@@ -2650,6 +2768,1115 @@ const handleWebhook: RequestHandler = async (req, res) => {
 };
 
 // =====================================================
+// ADMIN HELPERS
+// =====================================================
+
+/** Extract admin ID from Bearer JWT for admin-protected routes */
+function extractAdminId(req: any, res: any): number | null {
+  const authHeader = req.headers.authorization as string | undefined;
+  if (!authHeader?.startsWith("Bearer ")) {
+    res
+      .status(401)
+      .json({ success: false, error: "No session token provided" });
+    return null;
+  }
+  try {
+    const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
+    if (decoded.userType !== "admin") {
+      res.status(401).json({ success: false, error: "Invalid session type" });
+      return null;
+    }
+    return decoded.adminId as number;
+  } catch {
+    res
+      .status(401)
+      .json({ success: false, error: "Invalid or expired session" });
+    return null;
+  }
+}
+
+// =====================================================
+// ADMIN EMAIL TEMPLATES
+// =====================================================
+
+async function sendShippingEmail(
+  userEmail: string,
+  userName: string,
+  orderDetails: {
+    orderNumber: string;
+    trackingNumber: string;
+    shipmentProvider: string;
+    estimatedDelivery: string;
+    planName: string;
+    weight: string;
+    address: {
+      full_name: string;
+      street_address: string;
+      street_address_2?: string;
+      city: string;
+      state: string;
+      postal_code: string;
+    };
+  },
+): Promise<void> {
+  try {
+    const transporter = createMailTransporter();
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) return;
+    await transporter.verify();
+
+    const htmlTemplate = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Tu pedido está en camino</title>
+    </head>
+    <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:#f2f4f8;padding:40px 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#152a63 0%,#1d3c89 100%);padding:36px 30px;text-align:center;">
+            <img src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png" alt="Bolsadecafé" style="height:44px;width:auto;display:block;margin:0 auto 14px auto;" />
+            <h1 style="color:#fff;margin:0;font-size:26px;font-weight:700;">¡Tu café está en camino! 🚚</h1>
+            <p style="color:rgba(255,255,255,0.8);margin:8px 0 0 0;font-size:15px;">Orden #${orderDetails.orderNumber}</p>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="padding:36px 30px 20px;">
+            <p style="font-size:18px;color:#1a1a1a;margin:0 0 12px 0;">¡Hola ${userName}! 👋</p>
+            <p style="font-size:15px;color:#555;line-height:1.7;margin:0 0 28px 0;">Tu pedido de café de especialidad ha sido enviado y está en camino a tu puerta. Te compartimos los detalles de envío:</p>
+            <!-- Shipping Card -->
+            <div style="background:linear-gradient(135deg,#f7f8fc 0%,#eef1f8 100%);border:2px solid #c8d0e8;border-radius:12px;padding:24px;margin-bottom:24px;">
+              <h2 style="color:#1a3578;margin:0 0 20px 0;font-size:18px;font-weight:700;">📦 Información de Envío</h2>
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="color:#666;font-size:14px;padding:10px 0;border-bottom:1px solid #d5daea;">Paquetería:</td>
+                  <td style="color:#1a1a1a;font-size:14px;font-weight:700;text-align:right;padding:10px 0;border-bottom:1px solid #d5daea;">${orderDetails.shipmentProvider}</td>
+                </tr>
+                <tr>
+                  <td style="color:#666;font-size:14px;padding:10px 0;border-bottom:1px solid #d5daea;">Número de rastreo:</td>
+                  <td style="color:#1a3578;font-size:14px;font-weight:700;text-align:right;padding:10px 0;border-bottom:1px solid #d5daea;">${orderDetails.trackingNumber}</td>
+                </tr>
+                <tr>
+                  <td style="color:#666;font-size:14px;padding:10px 0;border-bottom:1px solid #d5daea;">Entrega estimada:</td>
+                  <td style="color:#1a1a1a;font-size:14px;font-weight:700;text-align:right;padding:10px 0;border-bottom:1px solid #d5daea;">${orderDetails.estimatedDelivery}</td>
+                </tr>
+                <tr>
+                  <td style="color:#666;font-size:14px;padding:10px 0;">Producto:</td>
+                  <td style="color:#1a1a1a;font-size:14px;font-weight:600;text-align:right;padding:10px 0;">${orderDetails.planName} (${orderDetails.weight})</td>
+                </tr>
+              </table>
+            </div>
+            <!-- Delivery Address -->
+            <div style="background:#f9fafb;border:2px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:24px;">
+              <h3 style="color:#1a1a1a;margin:0 0 12px 0;font-size:16px;font-weight:700;">🏠 Dirección de Entrega</h3>
+              <p style="margin:0;color:#1a1a1a;font-size:15px;line-height:1.6;font-weight:600;">${orderDetails.address.full_name}</p>
+              <p style="margin:6px 0 0 0;color:#666;font-size:14px;line-height:1.6;">
+                ${orderDetails.address.street_address}${orderDetails.address.street_address_2 ? ", " + orderDetails.address.street_address_2 : ""}<br>
+                ${orderDetails.address.city}, ${orderDetails.address.state} ${orderDetails.address.postal_code}
+              </p>
+            </div>
+            <!-- Tip -->
+            <div style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);border:2px solid #fcd34d;border-radius:12px;padding:18px;margin-bottom:24px;">
+              <p style="margin:0;color:#92400e;font-size:14px;line-height:1.6;"><strong>☕ Tip:</strong> Para disfrutar al máximo tu café, muélelo justo antes de prepararlo. ¡La frescura hace toda la diferencia!</p>
+            </div>
+          </td>
+        </tr>
+        <!-- CTA -->
+        <tr>
+          <td style="padding:0 30px 36px;text-align:center;">
+            <a href="${process.env.FRONTEND_URL || "http://localhost:5173"}" style="display:inline-block;background:linear-gradient(135deg,#1a3578 0%,#1d3c89 100%);color:#fff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:700;font-size:16px;box-shadow:0 4px 12px rgba(26,53,120,0.3);">Ver Mi Cuenta</a>
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f9fafb;padding:24px 30px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="margin:0 0 6px 0;color:#666;font-size:13px;">¿Tienes preguntas sobre tu envío?</p>
+            <p style="margin:0;font-size:13px;"><a href="mailto:hola@bolsadecafe.com" style="color:#1a3578;text-decoration:none;font-weight:600;">hola@bolsadecafe.com</a></p>
+            <p style="margin:14px 0 0 0;color:#999;font-size:12px;">© 2026 Bolsa de Café. Todos los derechos reservados.</p>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>`;
+
+    await transporter.sendMail({
+      from:
+        process.env.SMTP_FROM || `"Bolsa de Café" <${process.env.SMTP_USER}>`,
+      to: userEmail,
+      subject: `🚚 Tu Bolsa de Café está en camino - Orden #${orderDetails.orderNumber}`,
+      html: htmlTemplate,
+    });
+    console.log(`✅ Shipping email sent to ${userEmail}`);
+  } catch (error) {
+    console.error("Error sending shipping email:", error);
+  }
+}
+
+async function sendDeliveryEmail(
+  userEmail: string,
+  userName: string,
+  orderDetails: {
+    orderNumber: string;
+    planName: string;
+    weight: string;
+    blogPostTitle?: string;
+    blogPostSlug?: string;
+  },
+): Promise<void> {
+  try {
+    const transporter = createMailTransporter();
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) return;
+    await transporter.verify();
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const blogSection =
+      orderDetails.blogPostTitle && orderDetails.blogPostSlug
+        ? `
+        <div style="background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border:2px solid #86efac;border-radius:12px;padding:20px;margin-bottom:24px;">
+          <h3 style="color:#166534;margin:0 0 10px 0;font-size:16px;font-weight:700;">📖 Conoce más sobre tu café</h3>
+          <p style="color:#15803d;font-size:14px;margin:0 0 14px 0;line-height:1.6;">${orderDetails.blogPostTitle}</p>
+          <a href="${frontendUrl}/blog/${orderDetails.blogPostSlug}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;">Leer Artículo →</a>
+        </div>`
+        : "";
+
+    const htmlTemplate = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>¡Tu café llegó!</title>
+    </head>
+    <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:#f2f4f8;padding:40px 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#152a63 0%,#1d3c89 100%);padding:36px 30px;text-align:center;">
+            <img src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png" alt="Bolsadecafé" style="height:44px;width:auto;display:block;margin:0 auto 14px auto;" />
+            <h1 style="color:#fff;margin:0;font-size:26px;font-weight:700;">¡Tu café llegó! ☕</h1>
+            <p style="color:rgba(255,255,255,0.8);margin:8px 0 0 0;font-size:15px;">Orden #${orderDetails.orderNumber}</p>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="padding:36px 30px 20px;">
+            <p style="font-size:18px;color:#1a1a1a;margin:0 0 12px 0;">¡Hola ${userName}! ☕</p>
+            <p style="font-size:15px;color:#555;line-height:1.7;margin:0 0 24px 0;">¡Excelentes noticias! Tu <strong>${orderDetails.planName} (${orderDetails.weight})</strong> de café de especialidad ha sido marcado como recibido. Esperamos que disfrutes cada sorbo tanto como nosotros disfrutamos prepararlo para ti.</p>
+            <!-- Enjoyment card -->
+            <div style="background:linear-gradient(135deg,#f7f8fc 0%,#eef1f8 100%);border:2px solid #c8d0e8;border-radius:12px;padding:22px;margin-bottom:24px;">
+              <h2 style="color:#1a3578;margin:0 0 14px 0;font-size:17px;font-weight:700;">☕ Consejos para el Mejor Café</h2>
+              <ul style="margin:0;padding:0 0 0 18px;color:#555;font-size:14px;line-height:2.2;">
+                <li>Almacena en lugar fresco y seco, lejos de la luz directa</li>
+                <li>Para mejor sabor, muele justo antes de preparar</li>
+                <li>Usa agua filtrada a 90-96°C para extracción óptima</li>
+                <li>Disfruta dentro de 4 semanas para máxima frescura</li>
+              </ul>
+            </div>
+            ${blogSection}
+            <!-- Rating encouragement -->
+            <div style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);border:2px solid #fcd34d;border-radius:12px;padding:18px;margin-bottom:24px;">
+              <p style="margin:0;color:#92400e;font-size:14px;line-height:1.7;text-align:center;"><strong>⭐ ¿Cómo estuvo tu experiencia?</strong><br>Tu próximo envío ya está siendo preparado con el mismo amor y cuidado.</p>
+            </div>
+          </td>
+        </tr>
+        <!-- CTA -->
+        <tr>
+          <td style="padding:0 30px 36px;text-align:center;">
+            <a href="${frontendUrl}" style="display:inline-block;background:linear-gradient(135deg,#1a3578 0%,#1d3c89 100%);color:#fff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:700;font-size:16px;box-shadow:0 4px 12px rgba(26,53,120,0.3);">Ver Mi Suscripción</a>
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f9fafb;padding:24px 30px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="margin:0 0 6px 0;color:#666;font-size:13px;">¿Tienes preguntas o comentarios?</p>
+            <p style="margin:0;font-size:13px;"><a href="mailto:hola@bolsadecafe.com" style="color:#1a3578;text-decoration:none;font-weight:600;">hola@bolsadecafe.com</a></p>
+            <p style="margin:14px 0 0 0;color:#999;font-size:12px;">© 2026 Bolsa de Café. Todos los derechos reservados.</p>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>`;
+
+    await transporter.sendMail({
+      from:
+        process.env.SMTP_FROM || `"Bolsa de Café" <${process.env.SMTP_USER}>`,
+      to: userEmail,
+      subject: `☕ ¡Tu Bolsa de Café llegó! - Orden #${orderDetails.orderNumber}`,
+      html: htmlTemplate,
+    });
+    console.log(`✅ Delivery email sent to ${userEmail}`);
+  } catch (error) {
+    console.error("Error sending delivery email:", error);
+  }
+}
+
+// =====================================================
+// ADMIN ROUTE HANDLERS
+// =====================================================
+
+/**
+ * POST /api/admin/auth/send-code
+ * Send OTP verification code to admin email (passwordless)
+ */
+const handleAdminSendCode: RequestHandler = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: "Email requerido" });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const [admins] = await pool.query<any[]>(
+      "SELECT * FROM admins WHERE email = ? AND is_active = 1",
+      [normalizedEmail],
+    );
+
+    if (admins.length === 0) {
+      // Return generic error to avoid email enumeration
+      return res.status(404).json({
+        success: false,
+        error: "No existe una cuenta de administrador con ese correo",
+      });
+    }
+
+    const admin = admins[0];
+    const code = Math.floor(100000 + Math.random() * 900000);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await pool.query(
+      "UPDATE admins SET otp_code = ?, otp_expires_at = ? WHERE id = ?",
+      [code, expiresAt, admin.id],
+    );
+
+    await sendVerificationEmail(
+      normalizedEmail,
+      code,
+      (admin.full_name || "Admin").split(" ")[0],
+    );
+
+    res.json({
+      success: true,
+      message: "Código de acceso enviado",
+      debug_code: process.env.NODE_ENV === "development" ? code : undefined,
+    });
+  } catch (error) {
+    console.error("Admin send-code error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al enviar el código" });
+  }
+};
+
+/**
+ * POST /api/admin/auth/verify-code
+ * Verify OTP and return admin session token
+ */
+const handleAdminVerifyCode: RequestHandler = async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Email y código requeridos" });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const [admins] = await pool.query<any[]>(
+      "SELECT * FROM admins WHERE email = ? AND is_active = 1 AND otp_code = ? AND otp_expires_at > NOW()",
+      [normalizedEmail, parseInt(code)],
+    );
+
+    if (admins.length === 0) {
+      return res
+        .status(401)
+        .json({ success: false, error: "Código inválido o expirado" });
+    }
+
+    const admin = admins[0];
+
+    // Clear OTP after use
+    await pool.query(
+      "UPDATE admins SET otp_code = NULL, otp_expires_at = NULL, last_login = NOW() WHERE id = ?",
+      [admin.id],
+    );
+
+    const sessionToken = jwt.sign(
+      {
+        adminId: admin.id,
+        email: admin.email,
+        userType: "admin",
+        role: admin.role,
+      },
+      JWT_SECRET,
+      { expiresIn: "8h" },
+    );
+
+    res.json({
+      success: true,
+      sessionToken,
+      admin: {
+        id: admin.id,
+        username: admin.username,
+        email: admin.email,
+        full_name: admin.full_name,
+        role: admin.role,
+        avatar_url: admin.avatar_url,
+        bio: admin.bio,
+      },
+    });
+  } catch (error) {
+    console.error("Admin verify-code error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al verificar el código" });
+  }
+};
+
+/**
+ * GET /api/admin/auth/validate
+ */
+const handleAdminValidate: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [admins] = await pool.query<any[]>(
+      "SELECT id, username, email, full_name, role, avatar_url, bio FROM admins WHERE id = ? AND is_active = 1",
+      [adminId],
+    );
+    if (admins.length === 0) {
+      return res.status(401).json({ success: false, error: "Admin not found" });
+    }
+    res.json({ success: true, admin: admins[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Validation error" });
+  }
+};
+
+/**
+ * POST /api/admin/auth/logout
+ */
+const handleAdminLogout: RequestHandler = (_req, res) => {
+  res.json({ success: true });
+};
+
+/**
+ * GET /api/admin/dashboard
+ * Returns aggregate metrics for the admin dashboard
+ */
+const handleAdminDashboard: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [
+      [totalSubs],
+      [activeSubs],
+      [revenueData],
+      [monthlyRevRow],
+      [pipelineOrders],
+      [monthOrders],
+      [newClients],
+      revenueByMonthRows,
+    ] = await Promise.all([
+      pool.query<any[]>("SELECT COUNT(*) as count FROM subscriptions"),
+      pool.query<any[]>(
+        "SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'",
+      ),
+      pool.query<any[]>(
+        "SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE status = 'succeeded'",
+      ),
+      pool.query<any[]>(
+        "SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE status = 'succeeded' AND MONTH(created_at)=MONTH(NOW()) AND YEAR(created_at)=YEAR(NOW())",
+      ),
+      pool.query<any[]>(
+        "SELECT COUNT(*) as count FROM orders WHERE status IN ('processing','shipped')",
+      ),
+      pool.query<any[]>(
+        "SELECT COUNT(*) as count FROM orders WHERE MONTH(created_at)=MONTH(NOW()) AND YEAR(created_at)=YEAR(NOW())",
+      ),
+      pool.query<any[]>(
+        "SELECT COUNT(*) as count FROM users WHERE MONTH(created_at)=MONTH(NOW()) AND YEAR(created_at)=YEAR(NOW())",
+      ),
+      pool.query<any[]>(
+        `SELECT DATE_FORMAT(created_at,'%Y-%m') as month, COALESCE(SUM(amount),0) as revenue, COUNT(*) as orders FROM payments WHERE status='succeeded' AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH) GROUP BY DATE_FORMAT(created_at,'%Y-%m') ORDER BY month ASC`,
+      ),
+    ]);
+
+    res.json({
+      totalSubscribers: totalSubs[0]?.count ?? 0,
+      activeSubscriptions: activeSubs[0]?.count ?? 0,
+      totalRevenue: parseFloat(revenueData[0]?.total ?? 0),
+      monthlyRevenue: parseFloat(monthlyRevRow[0]?.total ?? 0),
+      ordersInPipeline: pipelineOrders[0]?.count ?? 0,
+      ordersThisMonth: monthOrders[0]?.count ?? 0,
+      newClientsThisMonth: newClients[0]?.count ?? 0,
+      revenueByMonth: (revenueByMonthRows[0] as any[]).map((r: any) => ({
+        month: r.month,
+        revenue: parseFloat(r.revenue),
+        orders: r.orders,
+      })),
+    });
+  } catch (error) {
+    console.error("Admin dashboard error:", error);
+    res.status(500).json({ success: false, error: "Error al cargar métricas" });
+  }
+};
+
+/**
+ * GET /api/admin/orders
+ * Returns all active pipeline orders (processing, shipped, delivered recent)
+ */
+const handleAdminOrders: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [rows] = await pool.query<any[]>(
+      `SELECT
+         o.id, o.order_number, o.status, o.total_amount, o.created_at,
+         o.shipped_at, o.delivered_at, o.tracking_number,
+         o.shipment_provider, o.estimated_delivery, o.notes,
+         o.subscription_id,
+         u.id as user_id, u.email as user_email, u.full_name as user_full_name, u.phone as user_phone,
+         sp.name as plan_name, sp.weight as plan_weight,
+         gt.name as grind_type_name,
+         a.full_name as address_full_name, a.street_address as address_street,
+         a.street_address_2 as address_street2, a.city as address_city,
+         ms.name as address_state, a.postal_code as address_postal_code, a.phone as address_phone
+       FROM orders o
+       JOIN users u ON o.user_id = u.id
+       LEFT JOIN subscriptions s ON o.subscription_id = s.id
+       LEFT JOIN subscription_plans sp ON s.plan_id = sp.id
+       LEFT JOIN grind_types gt ON s.grind_type_id = gt.id
+       LEFT JOIN addresses a ON o.shipping_address_id = a.id
+       LEFT JOIN mexico_states ms ON a.state_id = ms.id
+       WHERE o.status IN ('processing','shipped','delivered')
+       ORDER BY o.created_at DESC
+       LIMIT 200`,
+    );
+
+    const orders = rows.map((r) => ({
+      id: r.id,
+      orderNumber: r.order_number,
+      status: r.status,
+      totalAmount: parseFloat(r.total_amount),
+      createdAt: r.created_at,
+      shippedAt: r.shipped_at,
+      deliveredAt: r.delivered_at,
+      trackingNumber: r.tracking_number,
+      shipmentProvider: r.shipment_provider,
+      estimatedDelivery: r.estimated_delivery,
+      notes: r.notes,
+      subscriptionId: r.subscription_id,
+      userId: r.user_id,
+      userEmail: r.user_email,
+      userFullName: r.user_full_name,
+      userPhone: r.user_phone,
+      planName: r.plan_name,
+      planWeight: r.plan_weight,
+      grindTypeName: r.grind_type_name,
+      addressFullName: r.address_full_name,
+      addressStreet: r.address_street,
+      addressStreet2: r.address_street2,
+      addressCity: r.address_city,
+      addressState: r.address_state,
+      addressPostalCode: r.address_postal_code,
+      addressPhone: r.address_phone,
+    }));
+
+    res.json({ success: true, orders });
+  } catch (error) {
+    console.error("Admin orders error:", error);
+    res.status(500).json({ success: false, error: "Error al cargar órdenes" });
+  }
+};
+
+/**
+ * PUT /api/admin/orders/:id/ship
+ * Move order to 'shipped' status
+ */
+const handleAdminShipOrder: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const orderId = parseInt(req.params.id);
+  const { trackingNumber, shipmentProvider, estimatedDelivery } = req.body;
+
+  if (!trackingNumber || !shipmentProvider || !estimatedDelivery) {
+    return res.status(400).json({
+      success: false,
+      error:
+        "trackingNumber, shipmentProvider y estimatedDelivery son requeridos",
+    });
+  }
+
+  try {
+    const [orders] = await pool.query<any[]>(
+      `SELECT o.*, u.email as user_email, u.full_name as user_full_name,
+              sp.name as plan_name, sp.weight as plan_weight,
+              a.full_name as addr_name, a.street_address, a.street_address_2,
+              a.city, ms.name as state_name, a.postal_code
+       FROM orders o
+       JOIN users u ON o.user_id = u.id
+       LEFT JOIN subscriptions s ON o.subscription_id = s.id
+       LEFT JOIN subscription_plans sp ON s.plan_id = sp.id
+       LEFT JOIN addresses a ON o.shipping_address_id = a.id
+       LEFT JOIN mexico_states ms ON a.state_id = ms.id
+       WHERE o.id = ? AND o.status = 'processing'`,
+      [orderId],
+    );
+
+    if (orders.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Orden no encontrada o no en estado procesando",
+      });
+    }
+
+    const order = orders[0];
+
+    await pool.query(
+      `UPDATE orders SET status='shipped', tracking_number=?, shipment_provider=?, estimated_delivery=?, shipped_at=NOW(), updated_at=NOW() WHERE id=?`,
+      [trackingNumber, shipmentProvider, estimatedDelivery, orderId],
+    );
+
+    // Log admin action
+    await pool.query(
+      `INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, details) VALUES (?, 'ship_order', 'order', ?, ?)`,
+      [
+        adminId,
+        orderId,
+        JSON.stringify({ trackingNumber, shipmentProvider, estimatedDelivery }),
+      ],
+    );
+
+    // Send email notification
+    const estimatedDateFormatted = new Date(
+      estimatedDelivery,
+    ).toLocaleDateString("es-MX", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    await sendShippingEmail(
+      order.user_email,
+      order.user_full_name.split(" ")[0],
+      {
+        orderNumber: order.order_number,
+        trackingNumber,
+        shipmentProvider,
+        estimatedDelivery: estimatedDateFormatted,
+        planName: order.plan_name || "Café de Especialidad",
+        weight: order.plan_weight || "",
+        address: {
+          full_name: order.addr_name || order.user_full_name,
+          street_address: order.street_address || "",
+          street_address_2: order.street_address_2,
+          city: order.city || "",
+          state: order.state_name || "",
+          postal_code: order.postal_code || "",
+        },
+      },
+    );
+
+    // Fetch updated order
+    const [updatedRows] = await pool.query<any[]>(
+      `SELECT o.id, o.order_number, o.status, o.total_amount, o.created_at, o.shipped_at, o.delivered_at, o.tracking_number, o.shipment_provider, o.estimated_delivery, o.notes, o.subscription_id, u.id as user_id, u.email as user_email, u.full_name as user_full_name, u.phone as user_phone, sp.name as plan_name, sp.weight as plan_weight, gt.name as grind_type_name, a.full_name as address_full_name, a.street_address as address_street, a.street_address_2 as address_street2, a.city as address_city, ms.name as address_state, a.postal_code as address_postal_code, a.phone as address_phone FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN subscriptions s ON o.subscription_id = s.id LEFT JOIN subscription_plans sp ON s.plan_id = sp.id LEFT JOIN grind_types gt ON s.grind_type_id = gt.id LEFT JOIN addresses a ON o.shipping_address_id = a.id LEFT JOIN mexico_states ms ON a.state_id = ms.id WHERE o.id = ?`,
+      [orderId],
+    );
+
+    const r = updatedRows[0];
+    res.json({
+      success: true,
+      order: {
+        id: r.id,
+        orderNumber: r.order_number,
+        status: r.status,
+        totalAmount: parseFloat(r.total_amount),
+        createdAt: r.created_at,
+        shippedAt: r.shipped_at,
+        deliveredAt: r.delivered_at,
+        trackingNumber: r.tracking_number,
+        shipmentProvider: r.shipment_provider,
+        estimatedDelivery: r.estimated_delivery,
+        notes: r.notes,
+        subscriptionId: r.subscription_id,
+        userId: r.user_id,
+        userEmail: r.user_email,
+        userFullName: r.user_full_name,
+        userPhone: r.user_phone,
+        planName: r.plan_name,
+        planWeight: r.plan_weight,
+        grindTypeName: r.grind_type_name,
+        addressFullName: r.address_full_name,
+        addressStreet: r.address_street,
+        addressStreet2: r.address_street2,
+        addressCity: r.address_city,
+        addressState: r.address_state,
+        addressPostalCode: r.address_postal_code,
+        addressPhone: r.address_phone,
+      },
+    });
+  } catch (error) {
+    console.error("Admin ship order error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al actualizar orden" });
+  }
+};
+
+/**
+ * PUT /api/admin/orders/:id/deliver
+ * Move order to 'delivered' status, optional blog post
+ */
+const handleAdminDeliverOrder: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const orderId = parseInt(req.params.id);
+  const { blogPostTitle, blogPostContent } = req.body;
+
+  try {
+    const [orders] = await pool.query<any[]>(
+      `SELECT o.*, u.email as user_email, u.full_name as user_full_name, sp.name as plan_name, sp.weight as plan_weight FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN subscriptions s ON o.subscription_id = s.id LEFT JOIN subscription_plans sp ON s.plan_id = sp.id WHERE o.id = ? AND o.status = 'shipped'`,
+      [orderId],
+    );
+
+    if (orders.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Orden no encontrada o no en estado enviado",
+      });
+    }
+
+    const order = orders[0];
+
+    await pool.query(
+      `UPDATE orders SET status='delivered', delivered_at=NOW(), updated_at=NOW() WHERE id=?`,
+      [orderId],
+    );
+
+    // Create optional blog post
+    let blogPostSlug: string | undefined;
+    if (blogPostTitle && blogPostContent) {
+      const slug = blogPostTitle
+        .toLowerCase()
+        .replace(/[áàäâ]/g, "a")
+        .replace(/[éèëê]/g, "e")
+        .replace(/[íìïî]/g, "i")
+        .replace(/[óòöô]/g, "o")
+        .replace(/[úùüû]/g, "u")
+        .replace(/ñ/g, "n")
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-")
+        .substring(0, 100);
+      const uniqueSlug = `${slug}-${Date.now()}`;
+      await pool.query(
+        `INSERT INTO blog_posts (title, slug, content, author_id, status, published_at) VALUES (?, ?, ?, ?, 'published', NOW())`,
+        [blogPostTitle, uniqueSlug, blogPostContent, adminId],
+      );
+      blogPostSlug = uniqueSlug;
+    }
+
+    await pool.query(
+      `INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, details) VALUES (?, 'deliver_order', 'order', ?, ?)`,
+      [
+        adminId,
+        orderId,
+        JSON.stringify({ blogPostTitle: blogPostTitle || null }),
+      ],
+    );
+
+    await sendDeliveryEmail(
+      order.user_email,
+      order.user_full_name.split(" ")[0],
+      {
+        orderNumber: order.order_number,
+        planName: order.plan_name || "Café de Especialidad",
+        weight: order.plan_weight || "",
+        blogPostTitle: blogPostTitle || undefined,
+        blogPostSlug,
+      },
+    );
+
+    // Fetch updated order
+    const [updatedRows] = await pool.query<any[]>(
+      `SELECT o.id, o.order_number, o.status, o.total_amount, o.created_at, o.shipped_at, o.delivered_at, o.tracking_number, o.shipment_provider, o.estimated_delivery, o.notes, o.subscription_id, u.id as user_id, u.email as user_email, u.full_name as user_full_name, u.phone as user_phone, sp.name as plan_name, sp.weight as plan_weight, gt.name as grind_type_name, a.full_name as address_full_name, a.street_address as address_street, a.street_address_2 as address_street2, a.city as address_city, ms.name as address_state, a.postal_code as address_postal_code, a.phone as address_phone FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN subscriptions s ON o.subscription_id = s.id LEFT JOIN subscription_plans sp ON s.plan_id = sp.id LEFT JOIN grind_types gt ON s.grind_type_id = gt.id LEFT JOIN addresses a ON o.shipping_address_id = a.id LEFT JOIN mexico_states ms ON a.state_id = ms.id WHERE o.id = ?`,
+      [orderId],
+    );
+
+    const r = updatedRows[0];
+    res.json({
+      success: true,
+      order: {
+        id: r.id,
+        orderNumber: r.order_number,
+        status: r.status,
+        totalAmount: parseFloat(r.total_amount),
+        createdAt: r.created_at,
+        shippedAt: r.shipped_at,
+        deliveredAt: r.delivered_at,
+        trackingNumber: r.tracking_number,
+        shipmentProvider: r.shipment_provider,
+        estimatedDelivery: r.estimated_delivery,
+        notes: r.notes,
+        subscriptionId: r.subscription_id,
+        userId: r.user_id,
+        userEmail: r.user_email,
+        userFullName: r.user_full_name,
+        userPhone: r.user_phone,
+        planName: r.plan_name,
+        planWeight: r.plan_weight,
+        grindTypeName: r.grind_type_name,
+        addressFullName: r.address_full_name,
+        addressStreet: r.address_street,
+        addressStreet2: r.address_street2,
+        addressCity: r.address_city,
+        addressState: r.address_state,
+        addressPostalCode: r.address_postal_code,
+        addressPhone: r.address_phone,
+      },
+    });
+  } catch (error) {
+    console.error("Admin deliver order error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al actualizar orden" });
+  }
+};
+
+/**
+ * GET /api/admin/clients
+ * Returns all users with subscription/order summary
+ */
+const handleAdminClients: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [rows] = await pool.query<any[]>(
+      `SELECT
+         u.id, u.email, u.full_name, u.phone, u.stripe_customer_id,
+         u.email_verified, u.is_active, u.created_at, u.updated_at,
+         s.status as subscription_status,
+         sp.name as plan_name,
+         COALESCE(o_stats.total_orders, 0) as total_orders,
+         COALESCE(o_stats.total_spent, 0) as total_spent
+       FROM users u
+       LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status = 'active'
+       LEFT JOIN subscription_plans sp ON s.plan_id = sp.id
+       LEFT JOIN (
+         SELECT user_id, COUNT(*) as total_orders, SUM(total_amount) as total_spent
+         FROM orders WHERE status NOT IN ('cancelled','refunded')
+         GROUP BY user_id
+       ) o_stats ON u.id = o_stats.user_id
+       ORDER BY u.created_at DESC
+       LIMIT 500`,
+    );
+
+    res.json({ success: true, clients: rows });
+  } catch (error) {
+    console.error("Admin clients error:", error);
+    res.status(500).json({ success: false, error: "Error al cargar clientes" });
+  }
+};
+
+/**
+ * GET /api/admin/settings
+ */
+const handleAdminGetSettings: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [admins] = await pool.query<any[]>(
+      "SELECT id, username, email, full_name, role, avatar_url, bio FROM admins WHERE id = ?",
+      [adminId],
+    );
+    if (admins.length === 0)
+      return res.status(404).json({ success: false, error: "Admin not found" });
+    res.json({ success: true, admin: admins[0] });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, error: "Error al obtener configuración" });
+  }
+};
+
+/**
+ * PUT /api/admin/settings
+ */
+const handleAdminUpdateSettings: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const { full_name, email, bio, currentPassword, newPassword } = req.body;
+  if (!full_name || !email) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Nombre y email son requeridos" });
+  }
+
+  try {
+    const [admins] = await pool.query<any[]>(
+      "SELECT * FROM admins WHERE id = ?",
+      [adminId],
+    );
+    if (admins.length === 0)
+      return res.status(404).json({ success: false, error: "Admin not found" });
+    const admin = admins[0];
+
+    if (newPassword) {
+      if (!currentPassword)
+        return res
+          .status(400)
+          .json({ success: false, error: "Contraseña actual requerida" });
+      const passwordMatch = await bcrypt.compare(
+        currentPassword,
+        admin.password_hash,
+      );
+      if (!passwordMatch)
+        return res
+          .status(400)
+          .json({ success: false, error: "Contraseña actual incorrecta" });
+      const newHash = await bcrypt.hash(newPassword, 10);
+      await pool.query(
+        "UPDATE admins SET full_name=?, email=?, bio=?, password_hash=?, updated_at=NOW() WHERE id=?",
+        [full_name, email, bio || null, newHash, adminId],
+      );
+    } else {
+      await pool.query(
+        "UPDATE admins SET full_name=?, email=?, bio=?, updated_at=NOW() WHERE id=?",
+        [full_name, email, bio || null, adminId],
+      );
+    }
+
+    const [updated] = await pool.query<any[]>(
+      "SELECT id, username, email, full_name, role, avatar_url, bio FROM admins WHERE id = ?",
+      [adminId],
+    );
+    res.json({ success: true, admin: updated[0] });
+  } catch (error) {
+    console.error("Admin settings error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al guardar configuración" });
+  }
+};
+
+/**
+ * GET /api/admin/people — list all admins (super_admin only)
+ */
+const handleAdminGetPeople: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [requester] = await pool.query<any[]>(
+      "SELECT role FROM admins WHERE id = ?",
+      [adminId],
+    );
+    if (!requester.length || requester[0].role !== "super_admin") {
+      return res.status(403).json({ success: false, error: "Acceso denegado" });
+    }
+    const [people] = await pool.query<any[]>(
+      "SELECT id, username, email, full_name, role, is_active, avatar_url, bio, last_login, created_at FROM admins ORDER BY created_at ASC",
+    );
+    res.json({ success: true, people });
+  } catch (error) {
+    console.error("Admin people error:", error);
+    res.status(500).json({ success: false, error: "Error al obtener equipo" });
+  }
+};
+
+/**
+ * POST /api/admin/people — create admin (super_admin only)
+ */
+const handleAdminCreatePerson: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [requester] = await pool.query<any[]>(
+      "SELECT role FROM admins WHERE id = ?",
+      [adminId],
+    );
+    if (!requester.length || requester[0].role !== "super_admin") {
+      return res.status(403).json({ success: false, error: "Acceso denegado" });
+    }
+
+    const { username, email, full_name, role, bio } = req.body;
+    if (!username || !email || !full_name || !role) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Todos los campos son requeridos" });
+    }
+    if (!["super_admin", "admin", "support"].includes(role)) {
+      return res.status(400).json({ success: false, error: "Rol inválido" });
+    }
+
+    const [existing] = await pool.query<any[]>(
+      "SELECT id FROM admins WHERE email = ? OR username = ?",
+      [email, username],
+    );
+    if (existing.length > 0) {
+      return res
+        .status(409)
+        .json({ success: false, error: "Email o usuario ya existe" });
+    }
+
+    // OTP-only system — placeholder hash
+    const placeholderHash = await bcrypt.hash(`otp-only-${Date.now()}`, 10);
+
+    const [result] = await pool.query<any>(
+      "INSERT INTO admins (username, email, full_name, role, bio, password_hash, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), NOW())",
+      [username, email, full_name, role, bio || null, placeholderHash],
+    );
+
+    const [created] = await pool.query<any[]>(
+      "SELECT id, username, email, full_name, role, is_active, avatar_url, bio, last_login, created_at FROM admins WHERE id = ?",
+      [result.insertId],
+    );
+    res.json({ success: true, person: created[0] });
+  } catch (error) {
+    console.error("Admin create person error:", error);
+    res.status(500).json({ success: false, error: "Error al crear miembro" });
+  }
+};
+
+/**
+ * PUT /api/admin/people/:id — update admin (super_admin only)
+ */
+const handleAdminUpdatePerson: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [requester] = await pool.query<any[]>(
+      "SELECT role FROM admins WHERE id = ?",
+      [adminId],
+    );
+    if (!requester.length || requester[0].role !== "super_admin") {
+      return res.status(403).json({ success: false, error: "Acceso denegado" });
+    }
+
+    const targetId = parseInt(req.params.id, 10);
+    const { username, email, full_name, role, is_active, bio } = req.body;
+
+    if (!username || !email || !full_name || !role) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Todos los campos son requeridos" });
+    }
+    if (!["super_admin", "admin", "support"].includes(role)) {
+      return res.status(400).json({ success: false, error: "Rol inválido" });
+    }
+
+    const [target] = await pool.query<any[]>(
+      "SELECT role FROM admins WHERE id = ?",
+      [targetId],
+    );
+    if (!target.length) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Miembro no encontrado" });
+    }
+
+    // Prevent removing last super_admin
+    if (target[0].role === "super_admin" && role !== "super_admin") {
+      const [supers] = await pool.query<any[]>(
+        "SELECT COUNT(*) as cnt FROM admins WHERE role = 'super_admin' AND is_active = 1",
+      );
+      if (supers[0].cnt <= 1) {
+        return res.status(400).json({
+          success: false,
+          error: "No se puede cambiar el rol del único super_admin activo",
+        });
+      }
+    }
+
+    await pool.query(
+      "UPDATE admins SET username=?, email=?, full_name=?, role=?, is_active=?, bio=?, updated_at=NOW() WHERE id=?",
+      [
+        username,
+        email,
+        full_name,
+        role,
+        is_active ? 1 : 0,
+        bio || null,
+        targetId,
+      ],
+    );
+
+    const [updated] = await pool.query<any[]>(
+      "SELECT id, username, email, full_name, role, is_active, avatar_url, bio, last_login, created_at FROM admins WHERE id = ?",
+      [targetId],
+    );
+    res.json({ success: true, person: updated[0] });
+  } catch (error) {
+    console.error("Admin update person error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al actualizar miembro" });
+  }
+};
+
+/**
+ * DELETE /api/admin/people/:id — deactivate admin (super_admin only)
+ */
+const handleAdminDeactivatePerson: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [requester] = await pool.query<any[]>(
+      "SELECT role FROM admins WHERE id = ?",
+      [adminId],
+    );
+    if (!requester.length || requester[0].role !== "super_admin") {
+      return res.status(403).json({ success: false, error: "Acceso denegado" });
+    }
+
+    const targetId = parseInt(req.params.id, 10);
+
+    if (adminId === targetId) {
+      return res
+        .status(400)
+        .json({ success: false, error: "No puedes desactivarte a ti mismo" });
+    }
+
+    const [target] = await pool.query<any[]>(
+      "SELECT role FROM admins WHERE id = ?",
+      [targetId],
+    );
+    if (!target.length) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Miembro no encontrado" });
+    }
+
+    if (target[0].role === "super_admin") {
+      const [supers] = await pool.query<any[]>(
+        "SELECT COUNT(*) as cnt FROM admins WHERE role = 'super_admin' AND is_active = 1",
+      );
+      if (supers[0].cnt <= 1) {
+        return res.status(400).json({
+          success: false,
+          error: "No se puede desactivar al único super_admin activo",
+        });
+      }
+    }
+
+    await pool.query(
+      "UPDATE admins SET is_active = 0, updated_at = NOW() WHERE id = ?",
+      [targetId],
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Admin deactivate person error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al desactivar miembro" });
+  }
+};
+
+// =====================================================
 // SERVER INITIALIZATION
 // =====================================================
 
@@ -2741,6 +3968,26 @@ function createServer() {
 
   // Demo
   app.get("/api/demo", handleDemo);
+
+  // ── Admin routes ──────────────────────────────────────────────────
+  app.post("/api/admin/auth/send-code", handleAdminSendCode);
+  app.post("/api/admin/auth/verify-code", handleAdminVerifyCode);
+  app.get("/api/admin/auth/validate", handleAdminValidate);
+  app.post("/api/admin/auth/logout", handleAdminLogout);
+  app.get("/api/admin/dashboard", handleAdminDashboard);
+  app.get("/api/admin/orders", handleAdminOrders);
+  app.put("/api/admin/orders/:id/ship", handleAdminShipOrder as RequestHandler);
+  app.put(
+    "/api/admin/orders/:id/deliver",
+    handleAdminDeliverOrder as RequestHandler,
+  );
+  app.get("/api/admin/clients", handleAdminClients);
+  app.get("/api/admin/settings", handleAdminGetSettings);
+  app.put("/api/admin/settings", handleAdminUpdateSettings);
+  app.get("/api/admin/people", handleAdminGetPeople);
+  app.post("/api/admin/people", handleAdminCreatePerson);
+  app.put("/api/admin/people/:id", handleAdminUpdatePerson);
+  app.delete("/api/admin/people/:id", handleAdminDeactivatePerson);
 
   // 404 handler - only for API routes
   app.use("/api", (_req, res) => {

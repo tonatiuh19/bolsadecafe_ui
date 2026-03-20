@@ -1265,12 +1265,20 @@ export default function Index() {
 
           <div className="border-t border-neutral-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-500">
             <p>© 2026 Bolsadecafé. Todos los derechos reservados.</p>
-            <button
-              onClick={() => scrollTo("inicio")}
-              className="flex items-center gap-1.5 hover:text-white transition-colors"
-            >
-              Volver arriba <ChevronUp className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex items-center gap-4">
+              <a
+                href="/admin"
+                className="hover:text-neutral-400 transition-colors"
+              >
+                Admin
+              </a>
+              <button
+                onClick={() => scrollTo("inicio")}
+                className="flex items-center gap-1.5 hover:text-white transition-colors"
+              >
+                Volver arriba <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </footer>

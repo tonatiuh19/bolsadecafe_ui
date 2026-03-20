@@ -429,6 +429,158 @@ export interface HomeUser {
   email_verified: boolean;
 }
 
+// ─── Admin ────────────────────────────────────────────────────────────────────
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  email: string;
+  full_name: string;
+  role: "super_admin" | "admin" | "support";
+  avatar_url?: string;
+  bio?: string;
+}
+
+export interface AdminLoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface AdminLoginResponse {
+  success: boolean;
+  sessionToken: string;
+  admin: AdminUser;
+}
+
+export interface AdminDashboardMetrics {
+  totalSubscribers: number;
+  activeSubscriptions: number;
+  totalRevenue: number;
+  monthlyRevenue: number;
+  ordersInPipeline: number;
+  ordersThisMonth: number;
+  newClientsThisMonth: number;
+  revenueByMonth: Array<{ month: string; revenue: number; orders: number }>;
+}
+
+export interface AdminOrderItem {
+  id: number;
+  orderId: number;
+  planName: string;
+  weight: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
+export interface AdminOrder {
+  id: number;
+  orderNumber: string;
+  status:
+    | "pending"
+    | "processing"
+    | "shipped"
+    | "delivered"
+    | "cancelled"
+    | "refunded";
+  totalAmount: number;
+  createdAt: string;
+  shippedAt?: string;
+  deliveredAt?: string;
+  trackingNumber?: string;
+  shipmentProvider?: string;
+  estimatedDelivery?: string;
+  notes?: string;
+  // User info
+  userId: number;
+  userEmail: string;
+  userFullName: string;
+  userPhone?: string;
+  // Plan info
+  planName?: string;
+  planWeight?: string;
+  grindTypeName?: string;
+  // Address
+  addressFullName?: string;
+  addressStreet?: string;
+  addressStreet2?: string;
+  addressCity?: string;
+  addressState?: string;
+  addressPostalCode?: string;
+  addressPhone?: string;
+  // Subscription
+  subscriptionId?: number;
+}
+
+export interface MoveOrderToShippingRequest {
+  orderId: number;
+  trackingNumber: string;
+  shipmentProvider: string;
+  estimatedDelivery: string;
+}
+
+export interface MoveOrderToDeliveredRequest {
+  orderId: number;
+  blogPostTitle?: string;
+  blogPostContent?: string;
+}
+
+export interface AdminClient {
+  id: number;
+  email: string;
+  full_name: string;
+  phone?: string;
+  stripe_customer_id?: string;
+  email_verified: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Subscription info
+  subscription_status?: string;
+  plan_name?: string;
+  total_orders: number;
+  total_spent: number;
+}
+
+export interface AdminUpdateSettingsRequest {
+  full_name: string;
+  email: string;
+  bio?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}
+
+export interface AdminPerson {
+  id: number;
+  username: string;
+  email: string;
+  full_name: string;
+  role: "super_admin" | "admin" | "support";
+  is_active: boolean;
+  bio?: string;
+  avatar_url?: string;
+  last_login?: string;
+  created_at: string;
+}
+
+export interface CreateAdminPersonRequest {
+  username: string;
+  email: string;
+  full_name: string;
+  role: "super_admin" | "admin" | "support";
+  bio?: string;
+}
+
+export interface UpdateAdminPersonRequest {
+  id: number;
+  username: string;
+  email: string;
+  full_name: string;
+  role: "super_admin" | "admin" | "support";
+  is_active: boolean;
+  bio?: string;
+}
+
 /** Single endpoint response — replaces separate /api/plans, /api/grind-types,
  *  /api/states, and /api/auth/validate round-trips */
 export interface HomeResponse {

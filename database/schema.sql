@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Jan 25, 2026 at 01:28 PM
+-- Generation Time: Mar 19, 2026 at 10:31 PM
 -- Server version: 5.7.23-23
 -- PHP Version: 8.1.34
 
@@ -53,6 +53,8 @@ CREATE TABLE `addresses` (
   `full_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `street_address` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
   `street_address_2` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `apartment_number` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `delivery_instructions` text COLLATE utf8mb4_unicode_ci,
   `city` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `state_id` int(11) NOT NULL,
   `postal_code` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -62,6 +64,13 @@ CREATE TABLE `addresses` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `addresses`
+--
+
+INSERT INTO `addresses` (`id`, `user_id`, `address_type`, `full_name`, `street_address`, `street_address_2`, `apartment_number`, `delivery_instructions`, `city`, `state_id`, `postal_code`, `country`, `phone`, `is_default`, `created_at`, `updated_at`) VALUES
+(12, 9, 'shipping', 'Alex Gomez', 'Calle Independencia 47', 'Col. Centro', NULL, 'Casa color azul, tocar timbre', 'Lagos de Moreno', 14, '47400', 'MX', '+524741400363', 1, '2026-03-20 03:38:52', '2026-03-20 03:38:52');
 
 -- --------------------------------------------------------
 
@@ -80,6 +89,8 @@ CREATE TABLE `admins` (
   `bio` text COLLATE utf8mb4_unicode_ci,
   `avatar_url` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `last_login` datetime DEFAULT NULL,
+  `otp_code` int(6) DEFAULT NULL,
+  `otp_expires_at` datetime DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -88,8 +99,9 @@ CREATE TABLE `admins` (
 -- Dumping data for table `admins`
 --
 
-INSERT INTO `admins` (`id`, `username`, `email`, `password_hash`, `full_name`, `role`, `is_active`, `bio`, `avatar_url`, `last_login`, `created_at`, `updated_at`) VALUES
-(1, 'admin', 'admin@bolsadecafe.com', '$2b$10$rKvvKT0hqPZj8wy5zM5h0.OzKLcXxNQ3RgVSNKZ5vJQgJxMxJQxQy', 'Administrador Principal', 'super_admin', 1, 'Administrador y editor principal de Bolsa de Café', NULL, NULL, '2026-01-24 19:03:20', '2026-01-24 19:03:20');
+INSERT INTO `admins` (`id`, `username`, `email`, `password_hash`, `full_name`, `role`, `is_active`, `bio`, `avatar_url`, `last_login`, `otp_code`, `otp_expires_at`, `created_at`, `updated_at`) VALUES
+(1, 'admin', 'axgoomez@gmail.com', '$2b$10$rKvvKT0hqPZj8wy5zM5h0.OzKLcXxNQ3RgVSNKZ5vJQgJxMxJQxQy', 'Felix Gomez', 'super_admin', 1, 'Administrador y editor principal de Bolsa de Café', NULL, '2026-03-19 22:27:53', NULL, NULL, '2026-01-24 19:03:20', '2026-03-20 04:27:53'),
+(2, 'leslie', 'lesliegcardona@gmail.com', '$2b$10$ZVUtk.snWaDHJj/4SeTyw.2UDv4Wgs2p201ESHACh5ruvM5YH0nTy', 'Leslie Gonzalez', 'super_admin', 1, NULL, NULL, NULL, NULL, NULL, '2026-03-20 04:28:49', '2026-03-20 04:28:49');
 
 -- --------------------------------------------------------
 
@@ -254,6 +266,24 @@ CREATE TABLE `business_inquiries` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `contact_submissions`
+--
+
+CREATE TABLE `contact_submissions` (
+  `id` int(11) NOT NULL,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `topic` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `subject` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `message` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` enum('pending','in_review','resolved','closed') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `grind_types`
 --
 
@@ -356,6 +386,7 @@ CREATE TABLE `orders` (
   `subscription_id` int(11) DEFAULT NULL,
   `order_number` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `stripe_payment_intent_id` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `stripe_invoice_id` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Stripe Invoice ID — used for idempotent webhook processing',
   `total_amount` decimal(10,2) NOT NULL,
   `currency` varchar(3) COLLATE utf8mb4_unicode_ci DEFAULT 'MXN',
   `status` enum('pending','processing','shipped','delivered','cancelled','refunded') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
@@ -363,12 +394,21 @@ CREATE TABLE `orders` (
   `billing_address_id` int(11) DEFAULT NULL,
   `grind_type_id` int(11) DEFAULT NULL,
   `tracking_number` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `shipment_provider` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `estimated_delivery` date DEFAULT NULL,
   `shipped_at` datetime DEFAULT NULL,
   `delivered_at` datetime DEFAULT NULL,
   `notes` text COLLATE utf8mb4_unicode_ci,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `orders`
+--
+
+INSERT INTO `orders` (`id`, `user_id`, `subscription_id`, `order_number`, `stripe_payment_intent_id`, `stripe_invoice_id`, `total_amount`, `currency`, `status`, `shipping_address_id`, `billing_address_id`, `grind_type_id`, `tracking_number`, `shipment_provider`, `estimated_delivery`, `shipped_at`, `delivered_at`, `notes`, `created_at`, `updated_at`) VALUES
+(1, 9, 19, 'BDC-1773977935495-19', NULL, 'in_1TCttg04sI0kP0GKpkgtTznn', 299.00, 'MXN', 'processing', 12, NULL, 4, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-20 03:38:55', '2026-03-20 03:38:55');
 
 -- --------------------------------------------------------
 
@@ -385,6 +425,13 @@ CREATE TABLE `order_items` (
   `subtotal` decimal(10,2) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `order_items`
+--
+
+INSERT INTO `order_items` (`id`, `order_id`, `plan_id`, `quantity`, `unit_price`, `subtotal`, `created_at`) VALUES
+(1, 1, 2, 1, 299.00, 299.00, '2026-03-20 03:38:55');
 
 -- --------------------------------------------------------
 
@@ -407,6 +454,13 @@ CREATE TABLE `payments` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `payments`
+--
+
+INSERT INTO `payments` (`id`, `user_id`, `order_id`, `subscription_id`, `stripe_payment_id`, `amount`, `currency`, `status`, `payment_method`, `failure_reason`, `refunded_at`, `created_at`, `updated_at`) VALUES
+(1, 9, 1, 19, NULL, 299.00, 'MXN', 'succeeded', 'card', NULL, NULL, '2026-03-20 03:38:55', '2026-03-20 03:38:55');
 
 -- --------------------------------------------------------
 
@@ -474,6 +528,13 @@ CREATE TABLE `subscriptions` (
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+--
+-- Dumping data for table `subscriptions`
+--
+
+INSERT INTO `subscriptions` (`id`, `user_id`, `plan_id`, `grind_type_id`, `shipping_address_id`, `stripe_subscription_id`, `status`, `current_period_start`, `current_period_end`, `cancel_at_period_end`, `cancelled_at`, `notes`, `created_at`, `updated_at`) VALUES
+(19, 9, 2, 4, 12, 'sub_1TCttg04sI0kP0GKFV9Qw690', 'active', '2026-03-19', '2026-04-18', 0, NULL, NULL, '2026-03-20 03:38:55', '2026-03-20 03:38:55');
+
 -- --------------------------------------------------------
 
 --
@@ -530,7 +591,7 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `email`, `full_name`, `phone`, `password_hash`, `stripe_customer_id`, `email_verified`, `is_active`, `created_at`, `updated_at`) VALUES
-(1, 'axgoomez@gmail.com', 'Felix Gomez', '+524741400363', NULL, NULL, 1, 1, '2026-01-24 21:03:56', '2026-01-24 21:04:12');
+(9, 'tonatiuh.gom@gmail.com', 'Alex Gomez', '+524741400363', NULL, 'cus_UBGQUDblLTH2tO', 1, 1, '2026-03-20 03:38:23', '2026-03-20 03:38:40');
 
 -- --------------------------------------------------------
 
@@ -550,12 +611,74 @@ CREATE TABLE `user_sessions` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- --------------------------------------------------------
+
 --
--- Dumping data for table `user_sessions`
+-- Table structure for table `visitor_events`
 --
 
-INSERT INTO `user_sessions` (`id`, `user_id`, `email`, `verification_code`, `is_active`, `expires_at`, `ip_address`, `user_agent`, `created_at`) VALUES
-(3, 1, 'axgoomez@gmail.com', 930448, 0, '2026-01-25 11:53:59', NULL, NULL, '2026-01-25 17:38:59');
+CREATE TABLE `visitor_events` (
+  `id` bigint(20) NOT NULL,
+  `session_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Client-generated UUID stored in sessionStorage',
+  `user_id` int(11) DEFAULT NULL COMMENT 'FK to users.id — null for anonymous visitors',
+  `event_type` enum('page_view','click','scroll','form_submit','subscription_start','subscription_complete','auth_open','auth_success','plan_select','checkout_start','checkout_complete','payment_method_added','payment_method_removed') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'page_view',
+  `page` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Path + query string of the page (e.g. /subscription-wizard?step=2)',
+  `referrer` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'HTTP Referer header or document.referrer',
+  `utm_source` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `utm_medium` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `utm_campaign` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `utm_term` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `utm_content` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'IPv4 or IPv6 — populated server-side',
+  `user_agent` text COLLATE utf8mb4_unicode_ci COMMENT 'Full UA string — populated server-side',
+  `device_type` enum('desktop','mobile','tablet','unknown') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'unknown',
+  `browser` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Detected browser name (Chrome, Safari, Firefox…)',
+  `os` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Detected OS (Windows, macOS, iOS, Android…)',
+  `country_code` varchar(2) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'ISO 3166-1 alpha-2 (populated via CF-IPCountry header)',
+  `duration_ms` int(11) DEFAULT NULL COMMENT 'Time on page in ms — sent on navigation away',
+  `metadata` json DEFAULT NULL COMMENT 'Arbitrary extra payload (selected plan id, step number, etc.)',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Visitor analytics — page views and custom frontend events';
+
+--
+-- Dumping data for table `visitor_events`
+--
+
+INSERT INTO `visitor_events` (`id`, `session_id`, `user_id`, `event_type`, `page`, `referrer`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `ip_address`, `user_agent`, `device_type`, `browser`, `os`, `country_code`, `duration_ms`, `metadata`, `created_at`) VALUES
+(1, '5554c8b2-6de8-4a16-957b-349081a7927c', NULL, 'page_view', '/', NULL, NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-17 05:36:09'),
+(2, '5554c8b2-6de8-4a16-957b-349081a7927c', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-17 05:40:42'),
+(3, '5554c8b2-6de8-4a16-957b-349081a7927c', NULL, 'page_view', '/', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-17 05:40:51'),
+(4, '5554c8b2-6de8-4a16-957b-349081a7927c', NULL, 'subscription_complete', '/subscription-wizard', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, '{\"plan_id\": \"500gr\"}', '2026-03-17 05:41:33'),
+(5, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 02:55:49'),
+(6, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 02:57:30'),
+(8, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 02:58:00'),
+(9, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 02:58:06'),
+(10, 'anonymous', NULL, 'auth_success', '/', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 02:58:46'),
+(11, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'subscription_complete', '/subscription-wizard', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, '{\"plan_id\": \"500gr\"}', '2026-03-20 02:59:18'),
+(12, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:00:03'),
+(13, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:00:06'),
+(14, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:02:45'),
+(15, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:03:00'),
+(16, 'anonymous', NULL, 'auth_success', '/', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:03:45'),
+(17, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'subscription_complete', '/subscription-wizard', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, '{\"plan_id\": \"500gr\"}', '2026-03-20 03:04:08'),
+(20, 'anonymous', NULL, 'auth_success', '/', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:09:30'),
+(21, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'subscription_complete', '/subscription-wizard', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, '{\"plan_id\": \"500gr\"}', '2026-03-20 03:09:50'),
+(22, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:10:28'),
+(25, 'anonymous', NULL, 'auth_success', '/', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:19:57'),
+(26, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'subscription_complete', '/subscription-wizard', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, '{\"plan_id\": \"500gr\"}', '2026-03-20 03:20:33'),
+(27, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:20:43'),
+(28, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:33:12'),
+(29, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:35:01'),
+(30, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:37:40'),
+(31, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:37:43'),
+(32, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:37:59'),
+(33, 'anonymous', NULL, 'auth_success', '/', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:38:37'),
+(34, 'ff72770d-99d5-44eb-9f77-b64625d7466e', 9, 'subscription_complete', '/subscription-wizard', 'http://localhost:8080/subscription-wizard', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, '{\"plan_id\": \"500gr\"}', '2026-03-20 03:38:57'),
+(35, 'ff72770d-99d5-44eb-9f77-b64625d7466e', 9, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:39:00'),
+(36, 'ff72770d-99d5-44eb-9f77-b64625d7466e', 9, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:43:44'),
+(37, 'ff72770d-99d5-44eb-9f77-b64625d7466e', 9, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:47:26'),
+(38, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 03:47:32'),
+(39, 'ff72770d-99d5-44eb-9f77-b64625d7466e', NULL, 'page_view', '/', 'http://localhost:8080/', NULL, NULL, NULL, NULL, NULL, '::1', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'macOS', NULL, NULL, NULL, '2026-03-20 04:07:41');
 
 -- --------------------------------------------------------
 
@@ -692,6 +815,15 @@ ALTER TABLE `business_inquiries`
   ADD KEY `idx_created_at` (`created_at`);
 
 --
+-- Indexes for table `contact_submissions`
+--
+ALTER TABLE `contact_submissions`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_email` (`email`),
+  ADD KEY `idx_topic` (`topic`),
+  ADD KEY `idx_status` (`status`);
+
+--
 -- Indexes for table `grind_types`
 --
 ALTER TABLE `grind_types`
@@ -714,6 +846,7 @@ ALTER TABLE `mexico_states`
 ALTER TABLE `orders`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `order_number` (`order_number`),
+  ADD UNIQUE KEY `uq_orders_stripe_invoice_id` (`stripe_invoice_id`),
   ADD KEY `subscription_id` (`subscription_id`),
   ADD KEY `shipping_address_id` (`shipping_address_id`),
   ADD KEY `billing_address_id` (`billing_address_id`),
@@ -801,6 +934,17 @@ ALTER TABLE `user_sessions`
   ADD KEY `idx_expires_at_active` (`expires_at`,`is_active`);
 
 --
+-- Indexes for table `visitor_events`
+--
+ALTER TABLE `visitor_events`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_ve_session` (`session_id`),
+  ADD KEY `idx_ve_user` (`user_id`),
+  ADD KEY `idx_ve_event_type` (`event_type`),
+  ADD KEY `idx_ve_created` (`created_at`),
+  ADD KEY `idx_ve_page` (`page`(191));
+
+--
 -- Indexes for table `webhook_events`
 --
 ALTER TABLE `webhook_events`
@@ -818,13 +962,13 @@ ALTER TABLE `webhook_events`
 -- AUTO_INCREMENT for table `addresses`
 --
 ALTER TABLE `addresses`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT for table `admins`
 --
 ALTER TABLE `admins`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `admin_logs`
@@ -863,6 +1007,12 @@ ALTER TABLE `business_inquiries`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `contact_submissions`
+--
+ALTER TABLE `contact_submissions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `grind_types`
 --
 ALTER TABLE `grind_types`
@@ -878,19 +1028,19 @@ ALTER TABLE `mexico_states`
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `order_items`
 --
 ALTER TABLE `order_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `payments`
 --
 ALTER TABLE `payments`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `plan_features`
@@ -902,25 +1052,31 @@ ALTER TABLE `plan_features`
 -- AUTO_INCREMENT for table `subscriptions`
 --
 ALTER TABLE `subscriptions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
 
 --
 -- AUTO_INCREMENT for table `subscription_plans`
 --
 ALTER TABLE `subscription_plans`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `user_sessions`
 --
 ALTER TABLE `user_sessions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+
+--
+-- AUTO_INCREMENT for table `visitor_events`
+--
+ALTER TABLE `visitor_events`
+  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=40;
 
 --
 -- AUTO_INCREMENT for table `webhook_events`
@@ -1017,6 +1173,12 @@ ALTER TABLE `subscriptions`
 --
 ALTER TABLE `user_sessions`
   ADD CONSTRAINT `fk_user_sessions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `visitor_events`
+--
+ALTER TABLE `visitor_events`
+  ADD CONSTRAINT `fk_ve_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

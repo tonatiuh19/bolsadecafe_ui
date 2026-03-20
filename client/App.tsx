@@ -17,6 +17,13 @@ import NotFound from "./pages/NotFound";
 import TermsAndConditions from "./pages/TermsAndConditions";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import HelpCenter from "./pages/HelpCenter";
+import AdminLogin from "./pages/admin/AdminLogin";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
+import AdminClients from "./pages/admin/AdminClients";
+import AdminSettings from "./pages/admin/AdminSettings";
+import AdminPeople from "./pages/admin/AdminPeople";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +48,15 @@ const App = () => (
               <Route path="/terms" element={<TermsAndConditions />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/ayuda" element={<HelpCenter />} />
+              {/* Admin panel */}
+              <Route path="/admin" element={<AdminLogin />} />
+              <Route path="/admin" element={<AdminLayout />}>
+                <Route path="dashboard" element={<AdminDashboard />} />
+                <Route path="subscriptions" element={<AdminSubscriptions />} />
+                <Route path="clients" element={<AdminClients />} />
+                <Route path="people" element={<AdminPeople />} />
+                <Route path="settings" element={<AdminSettings />} />
+              </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

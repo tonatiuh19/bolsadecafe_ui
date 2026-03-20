@@ -8,6 +8,8 @@ import subscriptionWizardReducer from "./slices/subscriptionWizardSlice";
 import dashboardReducer from "./slices/dashboardSlice";
 import helpReducer from "./slices/helpSlice";
 import homeReducer from "./slices/homeSlice";
+import adminAuthReducer from "./slices/adminAuthSlice";
+import adminReducer from "./slices/adminSlice";
 
 export const store = configureStore({
   reducer: {
@@ -20,6 +22,8 @@ export const store = configureStore({
     subscriptionWizard: subscriptionWizardReducer,
     dashboard: dashboardReducer,
     help: helpReducer,
+    adminAuth: adminAuthReducer,
+    admin: adminReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
