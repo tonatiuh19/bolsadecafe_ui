@@ -17,6 +17,8 @@ import {
   UserCog,
   PanelLeftClose,
   PanelLeftOpen,
+  Coffee,
+  BookOpen,
 } from "lucide-react";
 import {
   Tooltip,
@@ -30,6 +32,8 @@ const navItems = [
   { to: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/admin/subscriptions", icon: Package, label: "Suscripciones" },
   { to: "/admin/clients", icon: Users, label: "Clientes" },
+  { to: "/admin/coffee-catalog", icon: Coffee, label: "Catálogo" },
+  { to: "/admin/blog", icon: BookOpen, label: "Blog" },
   { to: "/admin/people", icon: UserCog, label: "Equipo" },
   { to: "/admin/settings", icon: Settings, label: "Configuración" },
 ];

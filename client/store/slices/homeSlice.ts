@@ -8,6 +8,7 @@ import { setPlans } from "./plansSlice";
 import { setGrindTypes } from "./grindTypesSlice";
 import { setStates } from "./statesSlice";
 import { setUserFromHome } from "./authSlice";
+import { setBlogPostsFromHome } from "./blogSlice";
 import type { RootState } from "../store";
 
 /** Raw API response shape from GET /api/home */
@@ -15,6 +16,7 @@ interface HomeApiResponse {
   plans: SubscriptionPlan[];
   grindTypes: GrindType[];
   states: MexicoState[];
+  blogPosts: any[];
   user: User | null;
 }
 
@@ -65,6 +67,9 @@ export const fetchHome = createAsyncThunk(
     dispatch(setGrindTypes(data.grindTypes));
     dispatch(setStates(data.states));
     dispatch(setUserFromHome(data.user ?? null));
+    if (data.blogPosts?.length) {
+      dispatch(setBlogPostsFromHome(data.blogPosts));
+    }
 
     return data;
   },

@@ -24,6 +24,11 @@ import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
 import AdminClients from "./pages/admin/AdminClients";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminPeople from "./pages/admin/AdminPeople";
+import AdminCoffeeCatalog from "./pages/admin/AdminCoffeeCatalog";
+import AdminBlog from "./pages/admin/AdminBlog";
+import AdminBlogEditor from "./pages/admin/AdminBlogEditor";
+import BlogList from "./pages/BlogList";
+import BlogPost from "./pages/BlogPost";
 
 const queryClient = new QueryClient();
 
@@ -56,7 +61,14 @@ const App = () => (
                 <Route path="clients" element={<AdminClients />} />
                 <Route path="people" element={<AdminPeople />} />
                 <Route path="settings" element={<AdminSettings />} />
+                <Route path="coffee-catalog" element={<AdminCoffeeCatalog />} />
+                <Route path="blog" element={<AdminBlog />} />
+                <Route path="blog/new" element={<AdminBlogEditor />} />
+                <Route path="blog/:id/edit" element={<AdminBlogEditor />} />
               </Route>
+              {/* Blog public routes */}
+              <Route path="/blog" element={<BlogList />} />
+              <Route path="/blog/:slug" element={<BlogPost />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

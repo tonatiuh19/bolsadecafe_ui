@@ -10,6 +10,9 @@ import helpReducer from "./slices/helpSlice";
 import homeReducer from "./slices/homeSlice";
 import adminAuthReducer from "./slices/adminAuthSlice";
 import adminReducer from "./slices/adminSlice";
+import coffeeCatalogReducer from "./slices/coffeeCatalogSlice";
+import adminBlogReducer from "./slices/adminBlogSlice";
+import blogReducer from "./slices/blogSlice";
 
 export const store = configureStore({
   reducer: {
@@ -24,6 +27,9 @@ export const store = configureStore({
     help: helpReducer,
     adminAuth: adminAuthReducer,
     admin: adminReducer,
+    coffeeCatalog: coffeeCatalogReducer,
+    adminBlog: adminBlogReducer,
+    blog: blogReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

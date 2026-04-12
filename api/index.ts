@@ -916,7 +916,7 @@ const handleGetBlogPosts: RequestHandler = async (req, res) => {
     const [posts] = await pool.query<any[]>(
       `SELECT 
         bp.*,
-        a.name as author_name,
+        a.full_name as author_name,
         a.email as author_email
        FROM blog_posts bp
        JOIN admins a ON bp.author_id = a.id
@@ -952,7 +952,7 @@ const handleGetBlogPostBySlug: RequestHandler = async (req, res) => {
     const [posts] = await pool.query<any[]>(
       `SELECT 
         bp.*,
-        a.name as author_name,
+        a.full_name as author_name,
         a.email as author_email
        FROM blog_posts bp
        JOIN admins a ON bp.author_id = a.id
@@ -1396,13 +1396,13 @@ const handleUpgradeSubscriptionPlan: RequestHandler = async (req, res) => {
   try {
     // Verify subscription belongs to user and get stripe id
     const [subs] = await pool.query<any[]>(
-      "SELECT id, stripe_subscription_id, plan_id FROM subscriptions WHERE id = ? AND user_id = ? AND status = 'active'",
+      "SELECT id, stripe_subscription_id, plan_id FROM subscriptions WHERE id = ? AND user_id = ? AND status NOT IN ('cancelled')",
       [subscriptionId, userId],
     );
     if (subs.length === 0) {
       return res
         .status(404)
-        .json({ success: false, error: "Active subscription not found" });
+        .json({ success: false, error: "Suscripción no encontrada" });
     }
 
     const sub = subs[0];
@@ -1427,15 +1427,20 @@ const handleUpgradeSubscriptionPlan: RequestHandler = async (req, res) => {
       newPlan.stripe_price_id
     ) {
       // Update in Stripe (only if this is a real Stripe Subscription, not a PaymentIntent)
-      const stripeSub = await stripe.subscriptions.retrieve(
-        sub.stripe_subscription_id,
-      );
-      const itemId = (stripeSub as any).items.data[0]?.id;
-      if (itemId) {
-        await stripe.subscriptions.update(sub.stripe_subscription_id, {
-          items: [{ id: itemId, price: newPlan.stripe_price_id }],
-          proration_behavior: "create_prorations",
-        });
+      try {
+        const stripeSub = await stripe.subscriptions.retrieve(
+          sub.stripe_subscription_id,
+        );
+        const itemId = (stripeSub as any).items.data[0]?.id;
+        if (itemId) {
+          await stripe.subscriptions.update(sub.stripe_subscription_id, {
+            items: [{ id: itemId, price: newPlan.stripe_price_id }],
+            proration_behavior: "create_prorations",
+          });
+        }
+      } catch (stripeErr) {
+        // Log but don't abort — DB still gets updated
+        console.error("Stripe plan update error (non-fatal):", stripeErr);
       }
     }
 
@@ -1482,9 +1487,14 @@ const handleCancelSubscription: RequestHandler = async (req, res) => {
     const sub = subs[0];
 
     if (sub.stripe_subscription_id) {
-      await stripe.subscriptions.update(sub.stripe_subscription_id, {
-        cancel_at_period_end: true,
-      });
+      try {
+        await stripe.subscriptions.update(sub.stripe_subscription_id, {
+          cancel_at_period_end: true,
+        });
+      } catch (stripeErr) {
+        // Log but don't abort — still mark as cancelled in DB
+        console.error("Stripe cancel error (non-fatal):", stripeErr);
+      }
     }
 
     await pool.query(
@@ -1502,7 +1512,7 @@ const handleCancelSubscription: RequestHandler = async (req, res) => {
     console.error("Error cancelling subscription:", error);
     res
       .status(500)
-      .json({ success: false, error: "Failed to cancel subscription" });
+      .json({ success: false, error: "Error al cancelar la suscripción" });
   }
 };
 
@@ -2053,13 +2063,17 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
 
     // ── Prevent duplicate active subscriptions ───────────────────────
     const [existingActive] = await pool.query<any[]>(
-      "SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active'",
+      "SELECT id FROM subscriptions WHERE user_id = ? AND status NOT IN ('cancelled', 'incomplete_expired')",
       [userId],
     );
     if (existingActive.length > 0) {
       return res
         .status(400)
-        .json({ success: false, error: "Ya tienes una suscripción activa" });
+        .json({
+          success: false,
+          error:
+            "Ya tienes una suscripción activa. Gestiona tu suscripción actual desde tu cuenta.",
+        });
     }
 
     // ── Create Stripe Subscription ───────────────────────────────────
@@ -2416,7 +2430,7 @@ async function trackVisit(
 const handleGetHome: RequestHandler = async (req, res) => {
   try {
     // Run the three "catalogue" queries in parallel
-    const [plansRows, grindRows, stateRows] = await Promise.all([
+    const [plansRows, grindRows, stateRows, blogRows] = await Promise.all([
       pool.query<any[]>(
         `SELECT * FROM subscription_plans WHERE is_active = 1 ORDER BY price_mxn ASC`,
       ),
@@ -2425,6 +2439,15 @@ const handleGetHome: RequestHandler = async (req, res) => {
       ),
       pool.query<any[]>(
         `SELECT * FROM mexico_states WHERE is_active = 1 ORDER BY name ASC`,
+      ),
+      pool.query<any[]>(
+        `SELECT bp.*, a.full_name as author_name, bc.name as category_name
+         FROM blog_posts bp
+         JOIN admins a ON bp.author_id = a.id
+         LEFT JOIN blog_categories bc ON bp.category_id = bc.id
+         WHERE bp.status = 'published'
+         ORDER BY bp.published_at DESC
+         LIMIT 4`,
       ),
     ]);
 
@@ -2443,6 +2466,7 @@ const handleGetHome: RequestHandler = async (req, res) => {
 
     const grindTypes = grindRows[0] as any[];
     const states = stateRows[0] as any[];
+    const blogPosts = blogRows[0] as any[];
 
     // Auth-optional: try to return user data if a valid token is provided
     let user: Record<string, unknown> | null = null;
@@ -2475,7 +2499,7 @@ const handleGetHome: RequestHandler = async (req, res) => {
     // Track the page load (fire-and-forget)
     trackVisit(req, "page_view", "/");
 
-    res.json({ plans, grindTypes, states, user });
+    res.json({ plans, grindTypes, states, blogPosts, user });
   } catch (error) {
     console.error("[home] Error:", error);
     res.status(500).json({
@@ -2809,6 +2833,7 @@ async function sendShippingEmail(
     estimatedDelivery: string;
     planName: string;
     weight: string;
+    coffeeName?: string;
     address: {
       full_name: string;
       street_address: string;
@@ -2867,6 +2892,15 @@ async function sendShippingEmail(
                   <td style="color:#666;font-size:14px;padding:10px 0;">Producto:</td>
                   <td style="color:#1a1a1a;font-size:14px;font-weight:600;text-align:right;padding:10px 0;">${orderDetails.planName} (${orderDetails.weight})</td>
                 </tr>
+                ${
+                  orderDetails.coffeeName
+                    ? `
+                <tr>
+                  <td style="color:#666;font-size:14px;padding:10px 0;border-top:1px solid #d5daea;">Café del envío:</td>
+                  <td style="color:#92400e;font-size:14px;font-weight:700;text-align:right;padding:10px 0;border-top:1px solid #d5daea;">☕ ${orderDetails.coffeeName}</td>
+                </tr>`
+                    : ""
+                }
               </table>
             </div>
             <!-- Delivery Address -->
@@ -3237,13 +3271,15 @@ const handleAdminOrders: RequestHandler = async (req, res) => {
          o.id, o.order_number, o.status, o.total_amount, o.created_at,
          o.shipped_at, o.delivered_at, o.tracking_number,
          o.shipment_provider, o.estimated_delivery, o.notes,
-         o.subscription_id,
+         o.subscription_id, o.coffee_catalog_id,
+         o.shipping_label_cost, o.supply_cost,
          u.id as user_id, u.email as user_email, u.full_name as user_full_name, u.phone as user_phone,
          sp.name as plan_name, sp.weight as plan_weight,
          gt.name as grind_type_name,
          a.full_name as address_full_name, a.street_address as address_street,
          a.street_address_2 as address_street2, a.city as address_city,
-         ms.name as address_state, a.postal_code as address_postal_code, a.phone as address_phone
+         ms.name as address_state, a.postal_code as address_postal_code, a.phone as address_phone,
+         cc.name as coffee_catalog_name
        FROM orders o
        JOIN users u ON o.user_id = u.id
        LEFT JOIN subscriptions s ON o.subscription_id = s.id
@@ -3251,6 +3287,7 @@ const handleAdminOrders: RequestHandler = async (req, res) => {
        LEFT JOIN grind_types gt ON s.grind_type_id = gt.id
        LEFT JOIN addresses a ON o.shipping_address_id = a.id
        LEFT JOIN mexico_states ms ON a.state_id = ms.id
+       LEFT JOIN coffee_catalog cc ON o.coffee_catalog_id = cc.id
        WHERE o.status IN ('processing','shipped','delivered')
        ORDER BY o.created_at DESC
        LIMIT 200`,
@@ -3269,6 +3306,13 @@ const handleAdminOrders: RequestHandler = async (req, res) => {
       estimatedDelivery: r.estimated_delivery,
       notes: r.notes,
       subscriptionId: r.subscription_id,
+      coffeeCatalogId: r.coffee_catalog_id,
+      coffeeCatalogName: r.coffee_catalog_name,
+      shippingLabelCost:
+        r.shipping_label_cost != null
+          ? parseFloat(r.shipping_label_cost)
+          : null,
+      supplyCost: r.supply_cost != null ? parseFloat(r.supply_cost) : null,
       userId: r.user_id,
       userEmail: r.user_email,
       userFullName: r.user_full_name,
@@ -3301,7 +3345,14 @@ const handleAdminShipOrder: RequestHandler = async (req, res) => {
   if (!adminId) return;
 
   const orderId = parseInt(req.params.id);
-  const { trackingNumber, shipmentProvider, estimatedDelivery } = req.body;
+  const {
+    trackingNumber,
+    shipmentProvider,
+    estimatedDelivery,
+    coffeeCatalogId,
+    shippingLabelCost,
+    supplyCost,
+  } = req.body;
 
   if (!trackingNumber || !shipmentProvider || !estimatedDelivery) {
     return res.status(400).json({
@@ -3337,8 +3388,16 @@ const handleAdminShipOrder: RequestHandler = async (req, res) => {
     const order = orders[0];
 
     await pool.query(
-      `UPDATE orders SET status='shipped', tracking_number=?, shipment_provider=?, estimated_delivery=?, shipped_at=NOW(), updated_at=NOW() WHERE id=?`,
-      [trackingNumber, shipmentProvider, estimatedDelivery, orderId],
+      `UPDATE orders SET status='shipped', tracking_number=?, shipment_provider=?, estimated_delivery=?, coffee_catalog_id=?, shipping_label_cost=?, supply_cost=?, shipped_at=NOW(), updated_at=NOW() WHERE id=?`,
+      [
+        trackingNumber,
+        shipmentProvider,
+        estimatedDelivery,
+        coffeeCatalogId ?? null,
+        shippingLabelCost != null ? Number(shippingLabelCost) : null,
+        supplyCost != null ? Number(supplyCost) : null,
+        orderId,
+      ],
     );
 
     // Log admin action
@@ -3347,9 +3406,26 @@ const handleAdminShipOrder: RequestHandler = async (req, res) => {
       [
         adminId,
         orderId,
-        JSON.stringify({ trackingNumber, shipmentProvider, estimatedDelivery }),
+        JSON.stringify({
+          trackingNumber,
+          shipmentProvider,
+          estimatedDelivery,
+          coffeeCatalogId: coffeeCatalogId ?? null,
+          shippingLabelCost: shippingLabelCost ?? null,
+          supplyCost: supplyCost ?? null,
+        }),
       ],
     );
+
+    // Lookup coffee name if provided
+    let coffeeCatalogName: string | undefined;
+    if (coffeeCatalogId) {
+      const [coffeeRows] = await pool.query<any[]>(
+        `SELECT name FROM coffee_catalog WHERE id = ?`,
+        [coffeeCatalogId],
+      );
+      coffeeCatalogName = (coffeeRows as any[])[0]?.name;
+    }
 
     // Send email notification
     const estimatedDateFormatted = new Date(
@@ -3370,6 +3446,7 @@ const handleAdminShipOrder: RequestHandler = async (req, res) => {
         estimatedDelivery: estimatedDateFormatted,
         planName: order.plan_name || "Café de Especialidad",
         weight: order.plan_weight || "",
+        coffeeName: coffeeCatalogName,
         address: {
           full_name: order.addr_name || order.user_full_name,
           street_address: order.street_address || "",
@@ -3383,7 +3460,7 @@ const handleAdminShipOrder: RequestHandler = async (req, res) => {
 
     // Fetch updated order
     const [updatedRows] = await pool.query<any[]>(
-      `SELECT o.id, o.order_number, o.status, o.total_amount, o.created_at, o.shipped_at, o.delivered_at, o.tracking_number, o.shipment_provider, o.estimated_delivery, o.notes, o.subscription_id, u.id as user_id, u.email as user_email, u.full_name as user_full_name, u.phone as user_phone, sp.name as plan_name, sp.weight as plan_weight, gt.name as grind_type_name, a.full_name as address_full_name, a.street_address as address_street, a.street_address_2 as address_street2, a.city as address_city, ms.name as address_state, a.postal_code as address_postal_code, a.phone as address_phone FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN subscriptions s ON o.subscription_id = s.id LEFT JOIN subscription_plans sp ON s.plan_id = sp.id LEFT JOIN grind_types gt ON s.grind_type_id = gt.id LEFT JOIN addresses a ON o.shipping_address_id = a.id LEFT JOIN mexico_states ms ON a.state_id = ms.id WHERE o.id = ?`,
+      `SELECT o.id, o.order_number, o.status, o.total_amount, o.created_at, o.shipped_at, o.delivered_at, o.tracking_number, o.shipment_provider, o.estimated_delivery, o.notes, o.subscription_id, o.coffee_catalog_id, o.shipping_label_cost, o.supply_cost, u.id as user_id, u.email as user_email, u.full_name as user_full_name, u.phone as user_phone, sp.name as plan_name, sp.weight as plan_weight, gt.name as grind_type_name, a.full_name as address_full_name, a.street_address as address_street, a.street_address_2 as address_street2, a.city as address_city, ms.name as address_state, a.postal_code as address_postal_code, a.phone as address_phone, cc.name as coffee_catalog_name FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN subscriptions s ON o.subscription_id = s.id LEFT JOIN subscription_plans sp ON s.plan_id = sp.id LEFT JOIN grind_types gt ON s.grind_type_id = gt.id LEFT JOIN addresses a ON o.shipping_address_id = a.id LEFT JOIN mexico_states ms ON a.state_id = ms.id LEFT JOIN coffee_catalog cc ON o.coffee_catalog_id = cc.id WHERE o.id = ?`,
       [orderId],
     );
 
@@ -3403,6 +3480,13 @@ const handleAdminShipOrder: RequestHandler = async (req, res) => {
         estimatedDelivery: r.estimated_delivery,
         notes: r.notes,
         subscriptionId: r.subscription_id,
+        coffeeCatalogId: r.coffee_catalog_id,
+        coffeeCatalogName: r.coffee_catalog_name,
+        shippingLabelCost:
+          r.shipping_label_cost != null
+            ? parseFloat(r.shipping_label_cost)
+            : null,
+        supplyCost: r.supply_cost != null ? parseFloat(r.supply_cost) : null,
         userId: r.user_id,
         userEmail: r.user_email,
         userFullName: r.user_full_name,
@@ -3877,6 +3961,618 @@ const handleAdminDeactivatePerson: RequestHandler = async (req, res) => {
 };
 
 // =====================================================
+// COFFEE CATALOG HANDLERS
+// =====================================================
+
+/**
+ * GET /api/admin/coffee-catalog
+ * List all coffee catalog entries (active + inactive)
+ */
+const handleAdminGetCoffeeCatalog: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [rows] = await pool.query<any[]>(
+      `SELECT cc.id, cc.name, cc.provider, cc.origin, cc.coffee_type, cc.variety,
+              cc.process, cc.roast_level, cc.altitude_min, cc.altitude_max,
+              cc.tasting_notes, cc.description, cc.image_url, cc.is_active,
+              cc.created_by_admin_id, cc.created_at, cc.updated_at
+       FROM coffee_catalog cc
+       ORDER BY cc.is_active DESC, cc.name ASC`,
+    );
+    const coffees = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      provider: r.provider,
+      origin: r.origin,
+      coffeeType: r.coffee_type,
+      variety: r.variety,
+      process: r.process,
+      roastLevel: r.roast_level,
+      altitudeMin: r.altitude_min,
+      altitudeMax: r.altitude_max,
+      tastingNotes: r.tasting_notes,
+      description: r.description,
+      imageUrl: r.image_url,
+      isActive: !!r.is_active,
+      createdByAdminId: r.created_by_admin_id,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+    res.json({ success: true, coffees });
+  } catch (error) {
+    console.error("Get coffee catalog error:", error);
+    res.status(500).json({ success: false, error: "Error al cargar catálogo" });
+  }
+};
+
+/**
+ * POST /api/admin/coffee-catalog
+ * Create a new coffee catalog entry
+ */
+const handleAdminCreateCoffee: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const {
+    name,
+    provider,
+    origin,
+    coffeeType,
+    variety,
+    process,
+    roastLevel,
+    altitudeMin,
+    altitudeMax,
+    tastingNotes,
+    description,
+    imageUrl,
+  } = req.body;
+
+  if (!name || !provider) {
+    return res
+      .status(400)
+      .json({ success: false, error: "name y provider son requeridos" });
+  }
+
+  try {
+    const [result] = await pool.query<any>(
+      `INSERT INTO coffee_catalog
+         (name, provider, origin, coffee_type, variety, process, roast_level,
+          altitude_min, altitude_max, tasting_notes, description, image_url,
+          is_active, created_by_admin_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      [
+        name,
+        provider,
+        origin ?? null,
+        coffeeType ?? null,
+        variety ?? null,
+        process ?? null,
+        roastLevel ?? "medium",
+        altitudeMin ?? null,
+        altitudeMax ?? null,
+        tastingNotes ?? null,
+        description ?? null,
+        imageUrl ?? null,
+        adminId,
+      ],
+    );
+
+    const insertId = result.insertId;
+
+    await pool.query(
+      `INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, details) VALUES (?, 'create_coffee', 'coffee_catalog', ?, ?)`,
+      [adminId, insertId, JSON.stringify({ name, provider })],
+    );
+
+    const [rows] = await pool.query<any[]>(
+      `SELECT * FROM coffee_catalog WHERE id = ?`,
+      [insertId],
+    );
+    const r = rows[0];
+    res.status(201).json({
+      success: true,
+      coffee: {
+        id: r.id,
+        name: r.name,
+        provider: r.provider,
+        origin: r.origin,
+        coffeeType: r.coffee_type,
+        variety: r.variety,
+        process: r.process,
+        roastLevel: r.roast_level,
+        altitudeMin: r.altitude_min,
+        altitudeMax: r.altitude_max,
+        tastingNotes: r.tasting_notes,
+        description: r.description,
+        imageUrl: r.image_url,
+        isActive: !!r.is_active,
+        createdByAdminId: r.created_by_admin_id,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      },
+    });
+  } catch (error) {
+    console.error("Create coffee error:", error);
+    res.status(500).json({ success: false, error: "Error al crear el café" });
+  }
+};
+
+/**
+ * PUT /api/admin/coffee-catalog/:id
+ * Update a coffee catalog entry
+ */
+const handleAdminUpdateCoffee: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const id = parseInt(req.params.id);
+  const {
+    name,
+    provider,
+    origin,
+    coffeeType,
+    variety,
+    process,
+    roastLevel,
+    altitudeMin,
+    altitudeMax,
+    tastingNotes,
+    description,
+    imageUrl,
+    isActive,
+  } = req.body;
+
+  if (!name || !provider) {
+    return res
+      .status(400)
+      .json({ success: false, error: "name y provider son requeridos" });
+  }
+
+  try {
+    await pool.query(
+      `UPDATE coffee_catalog SET
+         name=?, provider=?, origin=?, coffee_type=?, variety=?, process=?,
+         roast_level=?, altitude_min=?, altitude_max=?, tasting_notes=?,
+         description=?, image_url=?, is_active=?, updated_at=NOW()
+       WHERE id=?`,
+      [
+        name,
+        provider,
+        origin ?? null,
+        coffeeType ?? null,
+        variety ?? null,
+        process ?? null,
+        roastLevel ?? "medium",
+        altitudeMin ?? null,
+        altitudeMax ?? null,
+        tastingNotes ?? null,
+        description ?? null,
+        imageUrl ?? null,
+        isActive !== undefined ? (isActive ? 1 : 0) : 1,
+        id,
+      ],
+    );
+
+    await pool.query(
+      `INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, details) VALUES (?, 'update_coffee', 'coffee_catalog', ?, ?)`,
+      [adminId, id, JSON.stringify({ name, provider })],
+    );
+
+    const [rows] = await pool.query<any[]>(
+      `SELECT * FROM coffee_catalog WHERE id = ?`,
+      [id],
+    );
+    if (rows.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Café no encontrado" });
+    }
+    const r = rows[0];
+    res.json({
+      success: true,
+      coffee: {
+        id: r.id,
+        name: r.name,
+        provider: r.provider,
+        origin: r.origin,
+        coffeeType: r.coffee_type,
+        variety: r.variety,
+        process: r.process,
+        roastLevel: r.roast_level,
+        altitudeMin: r.altitude_min,
+        altitudeMax: r.altitude_max,
+        tastingNotes: r.tasting_notes,
+        description: r.description,
+        imageUrl: r.image_url,
+        isActive: !!r.is_active,
+        createdByAdminId: r.created_by_admin_id,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      },
+    });
+  } catch (error) {
+    console.error("Update coffee error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al actualizar el café" });
+  }
+};
+
+/**
+ * DELETE /api/admin/coffee-catalog/:id
+ * Soft-delete (deactivate) a coffee catalog entry
+ */
+const handleAdminDeleteCoffee: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const id = parseInt(req.params.id);
+
+  try {
+    await pool.query(
+      `UPDATE coffee_catalog SET is_active=0, updated_at=NOW() WHERE id=?`,
+      [id],
+    );
+
+    await pool.query(
+      `INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, details) VALUES (?, 'deactivate_coffee', 'coffee_catalog', ?, ?)`,
+      [adminId, id, JSON.stringify({ deactivated: true })],
+    );
+
+    res.json({ success: true, message: "Café desactivado correctamente" });
+  } catch (error) {
+    console.error("Delete coffee error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al desactivar el café" });
+  }
+};
+
+// ─── Admin Blog Handlers ──────────────────────────────────────────────────────
+
+function mapBlogRow(r: any): object {
+  return {
+    id: r.id,
+    title: r.title,
+    slug: r.slug,
+    excerpt: r.excerpt,
+    content: r.content,
+    featuredImage: r.featured_image,
+    authorId: r.author_id,
+    authorName: r.author_name,
+    categoryId: r.category_id,
+    categoryName: r.category_name,
+    status: r.status,
+    publishedAt: r.published_at,
+    views: r.views ?? 0,
+    metaTitle: r.meta_title,
+    metaDescription: r.meta_description,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+/**
+ * GET /api/admin/blog/posts
+ * List all blog posts (all statuses) for admin
+ */
+const handleAdminGetBlogPosts: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const status = req.query.status as string | undefined;
+  try {
+    const params: any[] = [];
+    let where = "";
+    if (status && ["draft", "published", "archived"].includes(status)) {
+      where = "WHERE bp.status = ?";
+      params.push(status);
+    }
+
+    const [rows] = await pool.query<any[]>(
+      `SELECT bp.id, bp.title, bp.slug, bp.excerpt, bp.featured_image,
+              bp.author_id, a.full_name AS author_name,
+              bp.category_id, bc.name AS category_name,
+              bp.status, bp.published_at, bp.views,
+              bp.meta_title, bp.meta_description,
+              bp.content, bp.created_at, bp.updated_at
+       FROM blog_posts bp
+       LEFT JOIN admins a ON bp.author_id = a.id
+       LEFT JOIN blog_categories bc ON bp.category_id = bc.id
+       ${where}
+       ORDER BY bp.created_at DESC
+       LIMIT 200`,
+      params,
+    );
+
+    res.json({
+      success: true,
+      posts: rows.map(mapBlogRow),
+      total: rows.length,
+    });
+  } catch (error) {
+    console.error("Admin get blog posts error:", error);
+    res.status(500).json({ success: false, error: "Error al cargar posts" });
+  }
+};
+
+/**
+ * GET /api/admin/blog/posts/:id
+ * Get single blog post by ID for editing
+ */
+const handleAdminGetBlogPost: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const id = parseInt(req.params.id);
+  try {
+    const [rows] = await pool.query<any[]>(
+      `SELECT bp.id, bp.title, bp.slug, bp.excerpt, bp.featured_image,
+              bp.author_id, a.full_name AS author_name,
+              bp.category_id, bc.name AS category_name,
+              bp.status, bp.published_at, bp.views,
+              bp.meta_title, bp.meta_description,
+              bp.content, bp.created_at, bp.updated_at
+       FROM blog_posts bp
+       LEFT JOIN admins a ON bp.author_id = a.id
+       LEFT JOIN blog_categories bc ON bp.category_id = bc.id
+       WHERE bp.id = ?`,
+      [id],
+    );
+    if (rows.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Post no encontrado" });
+    }
+    res.json({ success: true, post: mapBlogRow(rows[0]) });
+  } catch (error) {
+    console.error("Admin get blog post error:", error);
+    res.status(500).json({ success: false, error: "Error al cargar post" });
+  }
+};
+
+/**
+ * POST /api/admin/blog/posts
+ * Create a new blog post
+ */
+const handleAdminCreateBlogPost: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const {
+    title,
+    slug,
+    excerpt,
+    content,
+    featuredImage,
+    categoryId,
+    status,
+    publishedAt,
+    metaTitle,
+    metaDescription,
+  } = req.body;
+
+  if (!title || !slug) {
+    return res
+      .status(400)
+      .json({ success: false, error: "title y slug son requeridos" });
+  }
+
+  const finalStatus = status || "draft";
+  const finalPublishedAt =
+    finalStatus === "published" && !publishedAt
+      ? new Date().toISOString().slice(0, 19).replace("T", " ")
+      : publishedAt
+        ? new Date(publishedAt).toISOString().slice(0, 19).replace("T", " ")
+        : null;
+
+  try {
+    const [result] = await pool.query<any>(
+      `INSERT INTO blog_posts
+         (title, slug, excerpt, content, featured_image, author_id, category_id,
+          status, published_at, meta_title, meta_description)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        title,
+        slug,
+        excerpt ?? null,
+        content ?? "",
+        featuredImage ?? null,
+        adminId,
+        categoryId ?? null,
+        finalStatus,
+        finalPublishedAt,
+        metaTitle ?? null,
+        metaDescription ?? null,
+      ],
+    );
+
+    const insertId = result.insertId;
+
+    await pool.query(
+      `INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, details)
+       VALUES (?, 'create_blog_post', 'blog_post', ?, ?)`,
+      [adminId, insertId, JSON.stringify({ title, slug, status: finalStatus })],
+    );
+
+    const [rows] = await pool.query<any[]>(
+      `SELECT bp.*, a.full_name AS author_name, bc.name AS category_name
+       FROM blog_posts bp
+       LEFT JOIN admins a ON bp.author_id = a.id
+       LEFT JOIN blog_categories bc ON bp.category_id = bc.id
+       WHERE bp.id = ?`,
+      [insertId],
+    );
+    res.status(201).json({ success: true, post: mapBlogRow(rows[0]) });
+  } catch (error: any) {
+    if (error.code === "ER_DUP_ENTRY") {
+      return res
+        .status(409)
+        .json({ success: false, error: "Ya existe un post con ese slug" });
+    }
+    console.error("Admin create blog post error:", error);
+    res.status(500).json({ success: false, error: "Error al crear el post" });
+  }
+};
+
+/**
+ * PUT /api/admin/blog/posts/:id
+ * Update an existing blog post
+ */
+const handleAdminUpdateBlogPost: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const id = parseInt(req.params.id);
+  const {
+    title,
+    slug,
+    excerpt,
+    content,
+    featuredImage,
+    categoryId,
+    status,
+    publishedAt,
+    metaTitle,
+    metaDescription,
+  } = req.body;
+
+  if (!title || !slug) {
+    return res
+      .status(400)
+      .json({ success: false, error: "title y slug son requeridos" });
+  }
+
+  const finalStatus = status || "draft";
+  let finalPublishedAt: string | null = null;
+  if (finalStatus === "published") {
+    finalPublishedAt = publishedAt
+      ? new Date(publishedAt).toISOString().slice(0, 19).replace("T", " ")
+      : new Date().toISOString().slice(0, 19).replace("T", " ");
+  } else if (publishedAt) {
+    finalPublishedAt = new Date(publishedAt)
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+  }
+
+  try {
+    await pool.query(
+      `UPDATE blog_posts SET
+         title=?, slug=?, excerpt=?, content=?, featured_image=?,
+         category_id=?, status=?, published_at=?,
+         meta_title=?, meta_description=?, updated_at=NOW()
+       WHERE id=?`,
+      [
+        title,
+        slug,
+        excerpt ?? null,
+        content ?? "",
+        featuredImage ?? null,
+        categoryId ?? null,
+        finalStatus,
+        finalPublishedAt,
+        metaTitle ?? null,
+        metaDescription ?? null,
+        id,
+      ],
+    );
+
+    await pool.query(
+      `INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, details)
+       VALUES (?, 'update_blog_post', 'blog_post', ?, ?)`,
+      [adminId, id, JSON.stringify({ title, slug, status: finalStatus })],
+    );
+
+    const [rows] = await pool.query<any[]>(
+      `SELECT bp.*, a.full_name AS author_name, bc.name AS category_name
+       FROM blog_posts bp
+       LEFT JOIN admins a ON bp.author_id = a.id
+       LEFT JOIN blog_categories bc ON bp.category_id = bc.id
+       WHERE bp.id = ?`,
+      [id],
+    );
+    if (rows.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Post no encontrado" });
+    }
+    res.json({ success: true, post: mapBlogRow(rows[0]) });
+  } catch (error: any) {
+    if (error.code === "ER_DUP_ENTRY") {
+      return res
+        .status(409)
+        .json({ success: false, error: "Ya existe un post con ese slug" });
+    }
+    console.error("Admin update blog post error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al actualizar el post" });
+  }
+};
+
+/**
+ * DELETE /api/admin/blog/posts/:id
+ * Archive (soft-delete) a blog post
+ */
+const handleAdminDeleteBlogPost: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  const id = parseInt(req.params.id);
+  try {
+    await pool.query(
+      `UPDATE blog_posts SET status='archived', updated_at=NOW() WHERE id=?`,
+      [id],
+    );
+    await pool.query(
+      `INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, details)
+       VALUES (?, 'archive_blog_post', 'blog_post', ?, ?)`,
+      [adminId, id, JSON.stringify({ archived: true })],
+    );
+    res.json({ success: true, message: "Post archivado correctamente" });
+  } catch (error) {
+    console.error("Admin delete blog post error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al archivar el post" });
+  }
+};
+
+/**
+ * GET /api/admin/blog/categories
+ * List all blog categories
+ */
+const handleAdminGetBlogCategories: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+
+  try {
+    const [rows] = await pool.query<any[]>(
+      `SELECT id, name, slug, description, sort_order, is_active
+       FROM blog_categories
+       ORDER BY sort_order ASC, name ASC`,
+    );
+    const categories = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      description: r.description,
+      sortOrder: r.sort_order,
+      isActive: !!r.is_active,
+    }));
+    res.json({ success: true, categories });
+  } catch (error) {
+    console.error("Admin get blog categories error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al cargar categorías" });
+  }
+};
+
+// =====================================================
 // SERVER INITIALIZATION
 // =====================================================
 
@@ -3988,6 +4684,35 @@ function createServer() {
   app.post("/api/admin/people", handleAdminCreatePerson);
   app.put("/api/admin/people/:id", handleAdminUpdatePerson);
   app.delete("/api/admin/people/:id", handleAdminDeactivatePerson);
+
+  // ── Admin coffee catalog routes ───────────────────────────────────────────
+  app.get("/api/admin/coffee-catalog", handleAdminGetCoffeeCatalog);
+  app.post("/api/admin/coffee-catalog", handleAdminCreateCoffee);
+  app.put(
+    "/api/admin/coffee-catalog/:id",
+    handleAdminUpdateCoffee as RequestHandler,
+  );
+  app.delete(
+    "/api/admin/coffee-catalog/:id",
+    handleAdminDeleteCoffee as RequestHandler,
+  );
+
+  // ── Admin blog routes ─────────────────────────────────────────────────────
+  app.get("/api/admin/blog/posts", handleAdminGetBlogPosts);
+  app.get(
+    "/api/admin/blog/posts/:id",
+    handleAdminGetBlogPost as RequestHandler,
+  );
+  app.post("/api/admin/blog/posts", handleAdminCreateBlogPost);
+  app.put(
+    "/api/admin/blog/posts/:id",
+    handleAdminUpdateBlogPost as RequestHandler,
+  );
+  app.delete(
+    "/api/admin/blog/posts/:id",
+    handleAdminDeleteBlogPost as RequestHandler,
+  );
+  app.get("/api/admin/blog/categories", handleAdminGetBlogCategories);
 
   // 404 handler - only for API routes
   app.use("/api", (_req, res) => {

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useFormik } from "formik";
 import * as Yup from "yup";
+import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   fetchAdminOrders,
@@ -9,6 +10,11 @@ import {
   clearActionState,
   updateOrderStatusLocally,
 } from "@/store/slices/adminSlice";
+import {
+  fetchCoffeeCatalog,
+  createCoffee,
+  clearCoffeeActionState,
+} from "@/store/slices/coffeeCatalogSlice";
 import type { AdminOrder } from "@shared/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +27,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Package,
   Truck,
@@ -35,6 +48,11 @@ import {
   FileText,
   Hash,
   Calendar,
+  Coffee,
+  Plus,
+  ExternalLink,
+  Receipt,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -90,6 +108,9 @@ const shippingSchema = Yup.object({
   trackingNumber: Yup.string().required("Número de rastreo requerido"),
   shipmentProvider: Yup.string().required("Paquetería requerida"),
   estimatedDelivery: Yup.string().required("Fecha estimada requerida"),
+  coffeeCatalogId: Yup.string().nullable(),
+  shippingLabelCost: Yup.number().typeError("Debe ser un número").nullable(),
+  supplyCost: Yup.number().typeError("Debe ser un número").nullable(),
 });
 
 // ─── Order card ───────────────────────────────────────────────────────────────
@@ -177,6 +198,14 @@ function OrderCard({
                   {order.shipmentProvider}
                 </p>
               )}
+              {order.coffeeCatalogName && (
+                <div className="flex items-center gap-1 mt-1">
+                  <Coffee className="w-3 h-3 text-amber-600" />
+                  <span className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                    {order.coffeeCatalogName}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -195,6 +224,7 @@ function OrderCard({
 
 export default function AdminSubscriptions() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const {
     orders,
     ordersLoading,
@@ -203,6 +233,9 @@ export default function AdminSubscriptions() {
     actionError,
     actionSuccess,
   } = useAppSelector((s) => s.admin);
+  const { items: coffees, actionLoading: coffeeActionLoading } = useAppSelector(
+    (s) => s.coffeeCatalog,
+  );
 
   // Drag state
   const [draggingId, setDraggingId] = useState<number | null>(null);
@@ -226,6 +259,7 @@ export default function AdminSubscriptions() {
 
   useEffect(() => {
     dispatch(fetchAdminOrders());
+    dispatch(fetchCoffeeCatalog());
   }, [dispatch]);
 
   useEffect(() => {
@@ -305,6 +339,9 @@ export default function AdminSubscriptions() {
       trackingNumber: "",
       shipmentProvider: "",
       estimatedDelivery: "",
+      coffeeCatalogId: "" as string,
+      shippingLabelCost: "",
+      supplyCost: "",
     },
     validationSchema: shippingSchema,
     enableReinitialize: true,
@@ -322,6 +359,13 @@ export default function AdminSubscriptions() {
           trackingNumber: values.trackingNumber,
           shipmentProvider: values.shipmentProvider,
           estimatedDelivery: values.estimatedDelivery,
+          coffeeCatalogId: values.coffeeCatalogId
+            ? Number(values.coffeeCatalogId)
+            : null,
+          shippingLabelCost: values.shippingLabelCost
+            ? Number(values.shippingLabelCost)
+            : null,
+          supplyCost: values.supplyCost ? Number(values.supplyCost) : null,
         }),
       );
       resetForm();
@@ -533,6 +577,10 @@ export default function AdminSubscriptions() {
               Confirmar Envío
             </DialogTitle>
           </DialogHeader>
+          <div className="flex items-start gap-2 rounded-lg bg-muted/50 border border-border px-3 py-2 text-xs text-muted-foreground">
+            <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-amber-500" />
+            Si cierras el modal sin guardar, los datos ingresados se perderán.
+          </div>
           {shippingDialogOrder && (
             <div className="space-y-1 mb-2 p-3 bg-gray-50 dark:bg-neutral-800 rounded-lg text-sm">
               <p className="font-bold text-primary font-mono">
@@ -552,6 +600,49 @@ export default function AdminSubscriptions() {
             Se notificará al cliente por email con los datos de envío.
           </p>
           <form onSubmit={shippingFormik.handleSubmit} className="space-y-4">
+            {/* ── Coffee selector ── */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5 text-sm">
+                  <Coffee className="w-3.5 h-3.5" /> Café del Envío
+                  <Badge variant="outline" className="text-xs ml-1">
+                    Opcional
+                  </Badge>
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => navigate("/admin/coffee-catalog")}
+                  className="flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink className="w-3 h-3" /> Catálogo completo
+                </button>
+              </div>
+              <Select
+                value={shippingFormik.values.coffeeCatalogId || "__none__"}
+                onValueChange={(v) =>
+                  shippingFormik.setFieldValue(
+                    "coffeeCatalogId",
+                    v === "__none__" ? "" : v,
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar café (opcional)..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin especificar</SelectItem>
+                  {coffees
+                    .filter((c) => c.isActive)
+                    .map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                        {c.provider ? ` — ${c.provider}` : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label className="flex items-center gap-1.5 text-sm">
                 <Hash className="w-3.5 h-3.5" /> Número de Rastreo *
@@ -597,6 +688,81 @@ export default function AdminSubscriptions() {
                   </p>
                 )}
             </div>
+            {/* ── Cost fields ───────────────────────────────────────────── */}
+            <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:border-amber-800/40 dark:bg-amber-950/20 p-3 space-y-3">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                <Receipt className="w-3.5 h-3.5" />
+                Costos del Envío
+                <span className="text-amber-500/70 font-normal">
+                  (opcional)
+                </span>
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">
+                    Etiqueta de envío
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                      $
+                    </span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      className="pl-6 text-sm"
+                      {...shippingFormik.getFieldProps("shippingLabelCost")}
+                    />
+                  </div>
+                  {shippingFormik.touched.shippingLabelCost &&
+                    shippingFormik.errors.shippingLabelCost && (
+                      <p className="text-destructive text-xs">
+                        {shippingFormik.errors.shippingLabelCost}
+                      </p>
+                    )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">
+                    Insumos / empaque
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                      $
+                    </span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      className="pl-6 text-sm"
+                      {...shippingFormik.getFieldProps("supplyCost")}
+                    />
+                  </div>
+                  {shippingFormik.touched.supplyCost &&
+                    shippingFormik.errors.supplyCost && (
+                      <p className="text-destructive text-xs">
+                        {shippingFormik.errors.supplyCost}
+                      </p>
+                    )}
+                </div>
+              </div>
+              {(shippingFormik.values.shippingLabelCost ||
+                shippingFormik.values.supplyCost) && (
+                <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                  Total costos:{" "}
+                  <span className="font-semibold">
+                    $
+                    {(
+                      (Number(shippingFormik.values.shippingLabelCost) || 0) +
+                      (Number(shippingFormik.values.supplyCost) || 0)
+                    ).toFixed(2)}{" "}
+                    MXN
+                  </span>
+                </p>
+              )}
+            </div>
+
             <DialogFooter className="gap-2 pt-2">
               <Button
                 type="button"

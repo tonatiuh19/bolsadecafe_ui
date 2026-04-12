@@ -73,53 +73,14 @@ interface SubscriptionPlan {
   badge?: string;
 }
 
-/* ─── vlog mock data ───────────────────────────────────── */
-const articles = [
-  {
-    id: 1,
-    title: "El Arte del Tostado Artesanal",
-    excerpt:
-      "Descubre cómo el nivel de tostado transforma los aromas y sabores del café, desde los matices frutales del tostado ligero hasta el cuerpo intenso del oscuro.",
-    readTime: "5 min",
-    date: "4 Mar 2026",
-    tag: "Tostado",
-    thumb:
-      "https://disruptinglabs.com/data/bolsadecafe/assets/images/hero-image.jpg",
-  },
-  {
-    id: 2,
-    title: "De la Milpa a Tu Taza: Origen Oaxaca",
-    excerpt:
-      "Visitamos las fincas de la Sierra Juárez para conocer de cerca a los productores que cultivan el café que llega cada mes a tu puerta.",
-    readTime: "7 min",
-    date: "25 Feb 2026",
-    tag: "Origen",
-    thumb:
-      "https://disruptinglabs.com/data/bolsadecafe/assets/images/hero-image.jpg",
-  },
-  {
-    id: 3,
-    title: "Pour-Over Perfecto en 5 Pasos",
-    excerpt:
-      "Una guía práctica para preparar un pour-over excepcional en casa: molido, temperatura, vertido y tiempo de extracción, todo explicado paso a paso.",
-    readTime: "4 min",
-    date: "18 Feb 2026",
-    tag: "Tutorial",
-    thumb:
-      "https://disruptinglabs.com/data/bolsadecafe/assets/images/hero-image.jpg",
-  },
-  {
-    id: 4,
-    title: "Café de Temporada: Cosecha 2026",
-    excerpt:
-      "La cosecha de este año nos trae notas de guayaba y miel en el Chiapas natural. Te contamos qué esperar y cómo aprovecharlo al máximo.",
-    readTime: "6 min",
-    date: "10 Feb 2026",
-    tag: "Temporada",
-    thumb:
-      "https://disruptinglabs.com/data/bolsadecafe/assets/images/hero-image.jpg",
-  },
-];
+/* ─── blog read-time helper ────────────────────────────── */
+function estimateReadTime(content: string): string {
+  const words = content
+    .replace(/<[^>]+>/g, " ")
+    .split(/\s+/)
+    .filter(Boolean).length;
+  return `${Math.max(1, Math.round(words / 200))} min`;
+}
 
 /* ─── FAQ data ─────────────────────────────────────────── */
 const faqs = [
@@ -258,6 +219,8 @@ export default function Index() {
   const plansError = useAppSelector(selectPlansError);
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const user = useAppSelector(selectUser);
+  const blogPosts = useAppSelector((s) => s.blog.posts).slice(0, 4);
+  const blogLoading = useAppSelector((s) => s.blog.loading);
 
   /* reveal refs */
   const r1 = useReveal();
@@ -464,7 +427,6 @@ export default function Index() {
               {[
                 ["inicio", "Inicio"],
                 ["planes", "Planes"],
-                ["vlogs", "Blog"],
                 ["como-funciona", "Cómo Funciona"],
                 ["preguntas", "FAQ"],
               ].map(([id, label]) => (
@@ -476,6 +438,12 @@ export default function Index() {
                   {label}
                 </button>
               ))}
+              <button
+                onClick={() => navigate("/blog")}
+                className={`text-sm font-medium transition-colors hover:opacity-100 ${scrolled ? "text-neutral-600 hover:text-brand-800" : "text-white/80 hover:text-white"}`}
+              >
+                Blog
+              </button>
             </nav>
 
             {/* Right buttons — pointer-events always on; opacity fades with scroll */}
@@ -569,7 +537,6 @@ export default function Index() {
             {[
               ["inicio", "Inicio"],
               ["planes", "Planes"],
-              ["vlogs", "Blog"],
               ["como-funciona", "Cómo Funciona"],
               ["preguntas", "FAQ"],
             ].map(([id, label]) => (
@@ -581,6 +548,12 @@ export default function Index() {
                 {label}
               </button>
             ))}
+            <button
+              onClick={() => navigate("/blog")}
+              className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-neutral-700 hover:bg-brand-50 hover:text-brand-800 transition-colors"
+            >
+              Blog
+            </button>
             <div className="pt-2 pb-1 border-t border-neutral-100 flex gap-2">
               <Button
                 variant="outline"
@@ -985,54 +958,92 @@ export default function Index() {
                 </span>
               </h2>
             </div>
-            <a
-              href="#"
+            <button
+              onClick={() => navigate("/blog")}
               className="flex items-center gap-2 text-sm text-neutral-400 hover:text-brand-700 transition-colors mb-1"
             >
               Ver todos
               <ChevronRight className="h-4 w-4" />
-            </a>
+            </button>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {articles.map((a, i) => (
-              <article
-                key={a.id}
-                style={{ animationDelay: `${i * 0.08}s` }}
-                className="animate-fadeUp group cursor-pointer flex flex-col rounded-2xl overflow-hidden bg-white border border-neutral-200 hover:border-brand-300 hover:shadow-md transition-all duration-300 hover:-translate-y-1"
-              >
-                {/* Thumbnail */}
-                <div className="relative overflow-hidden aspect-video bg-neutral-100 flex-shrink-0">
-                  <img
-                    src={a.thumb}
-                    alt={a.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-                  <span className="absolute top-3 left-3 bg-brand-700 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
-                    {a.tag}
-                  </span>
-                </div>
-
-                {/* Body */}
-                <div className="flex flex-col flex-1 p-4">
-                  <h4 className="text-neutral-900 font-bold text-sm leading-snug group-hover:text-brand-700 transition-colors line-clamp-2 mb-2">
-                    {a.title}
-                  </h4>
-                  <p className="text-neutral-500 text-xs leading-relaxed line-clamp-3 flex-1">
-                    {a.excerpt}
-                  </p>
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-neutral-100 text-neutral-400 text-xs">
-                    <span>{a.date}</span>
-                    <span className="flex items-center gap-1">
-                      <BookOpen className="h-3 w-3" />
-                      {a.readTime}
-                    </span>
+          {blogLoading ? (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              {[...Array(4)].map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl overflow-hidden bg-white border border-neutral-200 animate-pulse"
+                >
+                  <div className="aspect-video bg-neutral-200" />
+                  <div className="p-4 space-y-2">
+                    <div className="h-4 bg-neutral-200 rounded w-3/4" />
+                    <div className="h-3 bg-neutral-100 rounded w-full" />
+                    <div className="h-3 bg-neutral-100 rounded w-5/6" />
                   </div>
                 </div>
-              </article>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : blogPosts.length > 0 ? (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              {blogPosts.map((a, i) => (
+                <article
+                  key={a.id}
+                  style={{ animationDelay: `${i * 0.08}s` }}
+                  onClick={() => navigate(`/blog/${a.slug}`)}
+                  className="animate-fadeUp group cursor-pointer flex flex-col rounded-2xl overflow-hidden bg-white border border-neutral-200 hover:border-brand-300 hover:shadow-md transition-all duration-300 hover:-translate-y-1"
+                >
+                  {/* Thumbnail */}
+                  <div className="relative overflow-hidden aspect-video bg-neutral-100 flex-shrink-0">
+                    {a.featured_image ? (
+                      <img
+                        src={a.featured_image}
+                        alt={a.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-brand-100 to-amber-100 flex items-center justify-center">
+                        <BookOpen className="w-8 h-8 text-brand-300" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+                    {a.category_name && (
+                      <span className="absolute top-3 left-3 bg-brand-700 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                        {a.category_name}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Body */}
+                  <div className="flex flex-col flex-1 p-4">
+                    <h4 className="text-neutral-900 font-bold text-sm leading-snug group-hover:text-brand-700 transition-colors line-clamp-2 mb-2">
+                      {a.title}
+                    </h4>
+                    <p className="text-neutral-500 text-xs leading-relaxed line-clamp-3 flex-1">
+                      {a.excerpt}
+                    </p>
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-neutral-100 text-neutral-400 text-xs">
+                      <span>
+                        {a.published_at
+                          ? new Date(a.published_at).toLocaleDateString(
+                              "es-MX",
+                              {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              },
+                            )
+                          : "—"}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <BookOpen className="h-3 w-3" />
+                        {estimateReadTime(a.content)}
+                      </span>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -1194,7 +1205,6 @@ export default function Index() {
                 {[
                   ["inicio", "Inicio"],
                   ["planes", "Planes"],
-                  ["vlogs", "Blog"],
                   ["como-funciona", "Cómo Funciona"],
                   ["preguntas", "FAQ"],
                 ].map(([id, label]) => (
@@ -1207,6 +1217,14 @@ export default function Index() {
                     </button>
                   </li>
                 ))}
+                <li>
+                  <button
+                    onClick={() => navigate("/blog")}
+                    className="text-neutral-400 hover:text-white text-sm transition-colors"
+                  >
+                    Blog
+                  </button>
+                </li>
               </ul>
             </div>
 

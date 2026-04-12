@@ -510,6 +510,12 @@ export interface AdminOrder {
   addressPhone?: string;
   // Subscription
   subscriptionId?: number;
+  // Coffee catalog
+  coffeeCatalogId?: number;
+  coffeeCatalogName?: string;
+  // Costs (shipping label + supplies)
+  shippingLabelCost?: number;
+  supplyCost?: number;
 }
 
 export interface MoveOrderToShippingRequest {
@@ -517,6 +523,9 @@ export interface MoveOrderToShippingRequest {
   trackingNumber: string;
   shipmentProvider: string;
   estimatedDelivery: string;
+  coffeeCatalogId?: number | null;
+  shippingLabelCost?: number | null;
+  supplyCost?: number | null;
 }
 
 export interface MoveOrderToDeliveredRequest {
@@ -623,4 +632,127 @@ export interface TrackEventRequest {
 
 export interface TrackEventResponse {
   success: boolean;
+}
+
+// ─── Coffee Catalog ───────────────────────────────────────────────────────────
+
+export type RoastLevel =
+  | "light"
+  | "medium_light"
+  | "medium"
+  | "medium_dark"
+  | "dark";
+
+export interface CoffeeCatalog {
+  id: number;
+  name: string;
+  provider: string;
+  origin?: string;
+  coffeeType?: string;
+  variety?: string;
+  process?: string;
+  roastLevel?: RoastLevel;
+  altitudeMin?: number;
+  altitudeMax?: number;
+  tastingNotes?: string;
+  description?: string;
+  imageUrl?: string;
+  isActive: boolean;
+  createdByAdminId?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CoffeeCatalogListResponse {
+  success: boolean;
+  coffees: CoffeeCatalog[];
+}
+
+export interface CoffeeCatalogResponse {
+  success: boolean;
+  coffee: CoffeeCatalog;
+}
+
+export interface CreateCoffeeCatalogRequest {
+  name: string;
+  provider: string;
+  origin?: string;
+  coffeeType?: string;
+  variety?: string;
+  process?: string;
+  roastLevel?: RoastLevel;
+  altitudeMin?: number;
+  altitudeMax?: number;
+  tastingNotes?: string;
+  description?: string;
+  imageUrl?: string;
+}
+
+export interface UpdateCoffeeCatalogRequest extends CreateCoffeeCatalogRequest {
+  id: number;
+  isActive?: boolean;
+}
+
+// ─── Admin Blog ───────────────────────────────────────────────────────────────
+
+export interface AdminBlogPost {
+  id: number;
+  title: string;
+  slug: string;
+  excerpt?: string;
+  content: string;
+  featuredImage?: string;
+  authorId: number;
+  authorName?: string;
+  categoryId?: number;
+  categoryName?: string;
+  status: "draft" | "published" | "archived";
+  publishedAt?: string;
+  views: number;
+  metaTitle?: string;
+  metaDescription?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminBlogCategory {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface AdminBlogPostsResponse {
+  success: boolean;
+  posts: AdminBlogPost[];
+  total: number;
+}
+
+export interface AdminBlogPostResponse {
+  success: boolean;
+  post: AdminBlogPost;
+}
+
+export interface AdminBlogCategoriesResponse {
+  success: boolean;
+  categories: AdminBlogCategory[];
+}
+
+export interface AdminCreateBlogPostRequest {
+  title: string;
+  slug: string;
+  excerpt?: string;
+  content: string;
+  featuredImage?: string;
+  categoryId?: number | null;
+  status: "draft" | "published" | "archived";
+  publishedAt?: string | null;
+  metaTitle?: string;
+  metaDescription?: string;
+}
+
+export interface AdminUpdateBlogPostRequest extends AdminCreateBlogPostRequest {
+  id: number;
 }
