@@ -101,13 +101,18 @@ export const createSubscription = createAsyncThunk(
 // ── Fetch saved payment methods ───────────────────────────────────────────
 export const fetchPaymentMethods = createAsyncThunk(
   "payments/fetchPaymentMethods",
-  async (_, { getState }) => {
+  async (stripeSubscriptionId: string | undefined, { getState }) => {
     const state = getState() as RootState;
     const sessionToken = state.auth.sessionToken;
     if (!sessionToken) throw new Error("No session token available");
 
+    const params = stripeSubscriptionId
+      ? { subscriptionId: stripeSubscriptionId }
+      : undefined;
+
     const { data } = await axios.get("/payment-methods", {
       headers: { Authorization: `Bearer ${sessionToken}` },
+      params,
     });
     return data.paymentMethods as SavedPaymentMethod[];
   },
@@ -116,7 +121,13 @@ export const fetchPaymentMethods = createAsyncThunk(
 // ── Set default payment method ────────────────────────────────────────────
 export const setDefaultPaymentMethod = createAsyncThunk(
   "payments/setDefaultPaymentMethod",
-  async (paymentMethodId: string, { getState, rejectWithValue }) => {
+  async (
+    {
+      paymentMethodId,
+      stripeSubscriptionId,
+    }: { paymentMethodId: string; stripeSubscriptionId?: string },
+    { getState, rejectWithValue },
+  ) => {
     const state = getState() as RootState;
     const sessionToken = state.auth.sessionToken;
     if (!sessionToken) throw new Error("No session token available");
@@ -124,7 +135,7 @@ export const setDefaultPaymentMethod = createAsyncThunk(
     try {
       await axios.post(
         `/payment-methods/${paymentMethodId}/default`,
-        {},
+        stripeSubscriptionId ? { subscriptionId: stripeSubscriptionId } : {},
         { headers: { Authorization: `Bearer ${sessionToken}` } },
       );
       return paymentMethodId;

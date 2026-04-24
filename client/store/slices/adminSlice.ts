@@ -12,6 +12,8 @@ import type {
   AdminPerson,
   CreateAdminPersonRequest,
   UpdateAdminPersonRequest,
+  AdminSubscription,
+  AdminUpdateSubscriptionRequest,
 } from "@shared/api";
 
 interface AdminState {
@@ -38,6 +40,13 @@ interface AdminState {
   peopleActionLoading: boolean;
   peopleActionError: string | null;
   peopleActionSuccess: string | null;
+  // Subscriptions management
+  subscriptions: AdminSubscription[];
+  subscriptionsLoading: boolean;
+  subscriptionsError: string | null;
+  subscriptionActionLoading: boolean;
+  subscriptionActionError: string | null;
+  subscriptionActionSuccess: string | null;
   // Action state (moving orders, etc.)
   actionLoading: boolean;
   actionError: string | null;
@@ -63,6 +72,12 @@ const initialState: AdminState = {
   peopleActionLoading: false,
   peopleActionError: null,
   peopleActionSuccess: null,
+  subscriptions: [],
+  subscriptionsLoading: false,
+  subscriptionsError: null,
+  subscriptionActionLoading: false,
+  subscriptionActionError: null,
+  subscriptionActionSuccess: null,
   actionLoading: false,
   actionError: null,
   actionSuccess: null,
@@ -255,6 +270,43 @@ export const deactivateAdminPerson = createAsyncThunk(
   },
 );
 
+export const fetchAdminSubscriptions = createAsyncThunk(
+  "admin/fetchSubscriptions",
+  async (_, { getState, rejectWithValue }) => {
+    const { sessionToken } = (getState() as RootState).adminAuth;
+    try {
+      const { data } = await axios.get("/admin/subscriptions", {
+        headers: adminHeaders(sessionToken),
+      });
+      return data.subscriptions as AdminSubscription[];
+    } catch (err: any) {
+      return rejectWithValue(
+        err.response?.data?.error || "Error al cargar suscripciones",
+      );
+    }
+  },
+);
+
+export const adminUpdateSubscription = createAsyncThunk(
+  "admin/updateSubscription",
+  async (
+    { id, payload }: { id: number; payload: AdminUpdateSubscriptionRequest },
+    { getState, rejectWithValue },
+  ) => {
+    const { sessionToken } = (getState() as RootState).adminAuth;
+    try {
+      const { data } = await axios.put(`/admin/subscriptions/${id}`, payload, {
+        headers: adminHeaders(sessionToken),
+      });
+      return data.message as string;
+    } catch (err: any) {
+      return rejectWithValue(
+        err.response?.data?.error || "Error al actualizar suscripción",
+      );
+    }
+  },
+);
+
 const adminSlice = createSlice({
   name: "admin",
   initialState,
@@ -270,6 +322,10 @@ const adminSlice = createSlice({
     clearPeopleActionState(state) {
       state.peopleActionError = null;
       state.peopleActionSuccess = null;
+    },
+    clearSubscriptionActionState(state) {
+      state.subscriptionActionError = null;
+      state.subscriptionActionSuccess = null;
     },
     // Optimistic update for drag & drop
     updateOrderStatusLocally(
@@ -440,6 +496,37 @@ const adminSlice = createSlice({
         state.peopleActionLoading = false;
         state.peopleActionError = action.payload as string;
       });
+
+    // fetchAdminSubscriptions
+    builder
+      .addCase(fetchAdminSubscriptions.pending, (state) => {
+        state.subscriptionsLoading = true;
+        state.subscriptionsError = null;
+      })
+      .addCase(fetchAdminSubscriptions.fulfilled, (state, action) => {
+        state.subscriptionsLoading = false;
+        state.subscriptions = action.payload;
+      })
+      .addCase(fetchAdminSubscriptions.rejected, (state, action) => {
+        state.subscriptionsLoading = false;
+        state.subscriptionsError = action.payload as string;
+      });
+
+    // adminUpdateSubscription
+    builder
+      .addCase(adminUpdateSubscription.pending, (state) => {
+        state.subscriptionActionLoading = true;
+        state.subscriptionActionError = null;
+        state.subscriptionActionSuccess = null;
+      })
+      .addCase(adminUpdateSubscription.fulfilled, (state, action) => {
+        state.subscriptionActionLoading = false;
+        state.subscriptionActionSuccess = action.payload;
+      })
+      .addCase(adminUpdateSubscription.rejected, (state, action) => {
+        state.subscriptionActionLoading = false;
+        state.subscriptionActionError = action.payload as string;
+      });
   },
 });
 
@@ -447,6 +534,7 @@ export const {
   clearActionState,
   clearSettingsState,
   clearPeopleActionState,
+  clearSubscriptionActionState,
   updateOrderStatusLocally,
 } = adminSlice.actions;
 export default adminSlice.reducer;

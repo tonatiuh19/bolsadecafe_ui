@@ -4,7 +4,7 @@ import express, { type RequestHandler } from "express";
 import cors from "cors";
 import mysql from "mysql2/promise";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import crypto from "crypto";
 import Stripe from "stripe";
 import bcrypt from "bcryptjs";
@@ -34,20 +34,14 @@ const pool = mysql.createPool({
 // EMAIL HELPER
 // =====================================================
 
-/** Shared SMTP transporter — uses the same HostGator credentials for all emails */
-function createMailTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "mail.bolsadecafe.com",
-    port: parseInt(process.env.SMTP_PORT || "465"),
-    secure: process.env.SMTP_SECURE !== "false", // default true (SSL on 465)
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD,
-    },
-    tls: {
-      rejectUnauthorized: false, // allow self-signed certs on shared hosting
-    },
-  });
+/** Shared Resend client for all transactional emails */
+function createResendClient() {
+  return new Resend(process.env.RESEND_API_KEY);
+}
+
+/** Default "from" address for all outgoing emails */
+function getFromAddress() {
+  return process.env.SMTP_FROM || "Bolsa de Café <hola@bolsadecafe.com>";
 }
 
 /**
@@ -74,16 +68,12 @@ async function sendSubscriptionConfirmationEmail(
   },
 ): Promise<void> {
   try {
-    const transporter = createMailTransporter();
-
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
+    if (!process.env.RESEND_API_KEY) {
       console.error(
-        "❌ SMTP credentials not configured — skipping confirmation email",
+        "❌ RESEND_API_KEY not configured — skipping confirmation email",
       );
       return;
     }
-
-    await transporter.verify();
 
     const htmlTemplate = `
     <!DOCTYPE html>
@@ -193,9 +183,9 @@ async function sendSubscriptionConfirmationEmail(
     </html>
     `;
 
-    await transporter.sendMail({
-      from:
-        process.env.SMTP_FROM || `"Bolsa de Café" <${process.env.SMTP_USER}>`,
+    const resend = createResendClient();
+    await resend.emails.send({
+      from: getFromAddress(),
       to: userEmail,
       subject: "☕ ¡Tu suscripción a Bolsa de Café está confirmada!",
       html: htmlTemplate,
@@ -220,15 +210,12 @@ async function sendAdminNewOrderNotification(orderDetails: {
   subscriptionId: number;
 }): Promise<void> {
   try {
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) return;
+    if (!process.env.RESEND_API_KEY) return;
 
     const [admins] = await pool.query<any[]>(
       "SELECT email, full_name FROM admins WHERE is_active = 1",
     );
     if (admins.length === 0) return;
-
-    const transporter = createMailTransporter();
-    await transporter.verify();
 
     const adminUrl = process.env.FRONTEND_URL
       ? `${process.env.FRONTEND_URL}/admin/subscriptions`
@@ -289,10 +276,10 @@ async function sendAdminNewOrderNotification(orderDetails: {
     </body>
     </html>`;
 
-    const adminEmails = admins.map((a) => a.email).join(", ");
-    await transporter.sendMail({
-      from:
-        process.env.SMTP_FROM || `"Bolsa de Café" <${process.env.SMTP_USER}>`,
+    const adminEmails = admins.map((a) => a.email);
+    const resend = createResendClient();
+    await resend.emails.send({
+      from: getFromAddress(),
       to: adminEmails,
       subject: `📦 Nueva orden ${orderDetails.orderNumber} — $${orderDetails.amount.toFixed(2)} MXN`,
       html,
@@ -320,14 +307,10 @@ async function sendVerificationEmail(
     console.log("   Email:", email);
     console.log("   Name:", firstName);
 
-    const transporter = createMailTransporter();
-
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
-      console.error("❌ SMTP credentials not configured!");
+    if (!process.env.RESEND_API_KEY) {
+      console.error("❌ RESEND_API_KEY not configured!");
       return;
     }
-
-    await transporter.verify();
 
     const emailBody = `
       <!DOCTYPE html>
@@ -440,9 +423,9 @@ async function sendVerificationEmail(
       </html>
     `;
 
-    await transporter.sendMail({
-      from:
-        process.env.SMTP_FROM || `"Bolsa de Café" <${process.env.SMTP_USER}>`,
+    const resend = createResendClient();
+    await resend.emails.send({
+      from: getFromAddress(),
       to: email,
       subject: `${code} es tu código de verificación`,
       html: emailBody,
@@ -1666,10 +1649,15 @@ const handleCreateSetupIntent: RequestHandler = async (req, res) => {
 /**
  * GET /api/payment-methods
  * List all saved payment methods for the authenticated user.
+ * Optional query param: ?subscriptionId=sub_xxx
+ *   When provided, isDefault reflects the subscription-level default payment
+ *   method instead of the customer-level default.
  */
 const handleGetPaymentMethods: RequestHandler = async (req, res) => {
   const userId = extractUserId(req, res);
   if (!userId) return;
+
+  const stripeSubscriptionId = (req.query.subscriptionId as string) || null;
 
   try {
     const [users] = await pool.query<any[]>(
@@ -1684,8 +1672,20 @@ const handleGetPaymentMethods: RequestHandler = async (req, res) => {
     const customer = (await stripe.customers.retrieve(
       customerId,
     )) as Stripe.Customer;
-    const defaultPmId =
+    const customerDefaultPmId =
       (customer.invoice_settings?.default_payment_method as string) || null;
+
+    // Prefer the subscription-level default when a subscriptionId is given
+    let defaultPmId = customerDefaultPmId;
+    if (stripeSubscriptionId) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+        const subDefaultPmId = sub.default_payment_method as string | null;
+        if (subDefaultPmId) defaultPmId = subDefaultPmId;
+      } catch {
+        // Subscription not found in Stripe — fall back to customer default
+      }
+    }
 
     const pmList = await stripe.paymentMethods.list({
       customer: customerId,
@@ -1710,13 +1710,17 @@ const handleGetPaymentMethods: RequestHandler = async (req, res) => {
 
 /**
  * POST /api/payment-methods/:id/default
- * Set a saved payment method as the customer default.
+ * Set a saved payment method as the default.
+ * Optional body: { subscriptionId: "sub_xxx" }
+ *   When provided, updates the subscription-level default_payment_method AND
+ *   the customer-level default so both are in sync.
  */
 const handleSetDefaultPaymentMethod: RequestHandler = async (req, res) => {
   const userId = extractUserId(req, res);
   if (!userId) return;
 
   const paymentMethodId = req.params.id;
+  const stripeSubscriptionId: string | undefined = req.body?.subscriptionId;
 
   try {
     const [users] = await pool.query<any[]>(
@@ -1735,6 +1739,14 @@ const handleSetDefaultPaymentMethod: RequestHandler = async (req, res) => {
         .json({ error: "Payment method does not belong to this customer" });
     }
 
+    // Update subscription-level default when subscriptionId is provided
+    if (stripeSubscriptionId) {
+      await stripe.subscriptions.update(stripeSubscriptionId, {
+        default_payment_method: paymentMethodId,
+      });
+    }
+
+    // Always keep customer-level default in sync
     await stripe.customers.update(users[0].stripe_customer_id, {
       invoice_settings: { default_payment_method: paymentMethodId },
     });
@@ -2059,21 +2071,6 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
       return res.status(400).json({
         error: `Stripe Price ID no configurado para el entorno ${isTestMode ? "test" : "producción"}`,
       });
-    }
-
-    // ── Prevent duplicate active subscriptions ───────────────────────
-    const [existingActive] = await pool.query<any[]>(
-      "SELECT id FROM subscriptions WHERE user_id = ? AND status NOT IN ('cancelled', 'incomplete_expired')",
-      [userId],
-    );
-    if (existingActive.length > 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error:
-            "Ya tienes una suscripción activa. Gestiona tu suscripción actual desde tu cuenta.",
-        });
     }
 
     // ── Create Stripe Subscription ───────────────────────────────────
@@ -2845,9 +2842,7 @@ async function sendShippingEmail(
   },
 ): Promise<void> {
   try {
-    const transporter = createMailTransporter();
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) return;
-    await transporter.verify();
+    if (!process.env.RESEND_API_KEY) return;
 
     const htmlTemplate = `
     <!DOCTYPE html>
@@ -2936,9 +2931,9 @@ async function sendShippingEmail(
     </body>
     </html>`;
 
-    await transporter.sendMail({
-      from:
-        process.env.SMTP_FROM || `"Bolsa de Café" <${process.env.SMTP_USER}>`,
+    const resend = createResendClient();
+    await resend.emails.send({
+      from: getFromAddress(),
       to: userEmail,
       subject: `🚚 Tu Bolsa de Café está en camino - Orden #${orderDetails.orderNumber}`,
       html: htmlTemplate,
@@ -2961,9 +2956,7 @@ async function sendDeliveryEmail(
   },
 ): Promise<void> {
   try {
-    const transporter = createMailTransporter();
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) return;
-    await transporter.verify();
+    if (!process.env.RESEND_API_KEY) return;
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     const blogSection =
@@ -3034,9 +3027,9 @@ async function sendDeliveryEmail(
     </body>
     </html>`;
 
-    await transporter.sendMail({
-      from:
-        process.env.SMTP_FROM || `"Bolsa de Café" <${process.env.SMTP_USER}>`,
+    const resend = createResendClient();
+    await resend.emails.send({
+      from: getFromAddress(),
       to: userEmail,
       subject: `☕ ¡Tu Bolsa de Café llegó! - Orden #${orderDetails.orderNumber}`,
       html: htmlTemplate,
@@ -4542,6 +4535,148 @@ const handleAdminDeleteBlogPost: RequestHandler = async (req, res) => {
 };
 
 /**
+ * GET /api/admin/subscriptions
+ * List all subscriptions with user and plan details
+ */
+const handleAdminGetSubscriptions: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  try {
+    const [rows] = await pool.query<any[]>(
+      `SELECT
+         s.id, s.user_id, s.plan_id, s.grind_type_id,
+         s.stripe_subscription_id, s.status,
+         s.current_period_start, s.current_period_end,
+         s.cancel_at_period_end, s.cancelled_at, s.notes,
+         s.created_at,
+         u.email AS user_email, u.full_name AS user_full_name,
+         sp.name AS plan_name, sp.weight AS plan_weight, sp.price_mxn AS plan_price,
+         gt.name AS grind_type_name,
+         a.street_address AS shipping_address,
+         a.city AS shipping_city,
+         ms.name AS shipping_state
+       FROM subscriptions s
+       JOIN users u ON s.user_id = u.id
+       JOIN subscription_plans sp ON s.plan_id = sp.id
+       JOIN grind_types gt ON s.grind_type_id = gt.id
+       LEFT JOIN addresses a ON s.shipping_address_id = a.id
+       LEFT JOIN mexico_states ms ON a.state_id = ms.id
+       ORDER BY s.created_at DESC
+       LIMIT 500`,
+    );
+
+    const subscriptions = rows.map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      userEmail: r.user_email,
+      userFullName: r.user_full_name,
+      planId: r.plan_id,
+      planName: r.plan_name,
+      planWeight: r.plan_weight,
+      planPrice: parseFloat(r.plan_price ?? 0),
+      grindTypeName: r.grind_type_name,
+      status: r.status,
+      stripeSubscriptionId: r.stripe_subscription_id,
+      currentPeriodStart: r.current_period_start,
+      currentPeriodEnd: r.current_period_end,
+      cancelAtPeriodEnd: !!r.cancel_at_period_end,
+      cancelledAt: r.cancelled_at,
+      notes: r.notes,
+      createdAt: r.created_at,
+      shippingAddress: r.shipping_address,
+      shippingCity: r.shipping_city,
+      shippingState: r.shipping_state,
+    }));
+
+    res.json({ success: true, subscriptions });
+  } catch (error) {
+    console.error("Admin subscriptions error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al cargar suscripciones" });
+  }
+};
+
+/**
+ * PUT /api/admin/subscriptions/:id
+ * Admin override: update status and/or notes. Optionally cancel on Stripe.
+ */
+const handleAdminUpdateSubscription: RequestHandler = async (req, res) => {
+  const adminId = extractAdminId(req, res);
+  if (!adminId) return;
+  const subId = parseInt(req.params.id, 10);
+  if (isNaN(subId))
+    return res.status(400).json({ success: false, error: "ID inválido" });
+
+  const { status, notes, cancelOnStripe } = req.body as {
+    status?: string;
+    notes?: string;
+    cancelOnStripe?: boolean;
+  };
+
+  try {
+    const [rows] = await pool.query<any[]>(
+      "SELECT id, stripe_subscription_id, status FROM subscriptions WHERE id = ?",
+      [subId],
+    );
+    if (rows.length === 0)
+      return res
+        .status(404)
+        .json({ success: false, error: "Suscripción no encontrada" });
+
+    const sub = rows[0];
+
+    if (cancelOnStripe && sub.stripe_subscription_id) {
+      try {
+        await stripe.subscriptions.cancel(sub.stripe_subscription_id);
+      } catch (stripeErr: any) {
+        console.error(
+          "Stripe cancel error (admin override):",
+          stripeErr.message,
+        );
+      }
+    }
+
+    const updates: string[] = [];
+    const values: any[] = [];
+
+    if (status) {
+      updates.push("status = ?");
+      values.push(status);
+      if (status === "cancelled") {
+        updates.push("cancelled_at = NOW()");
+        updates.push("cancel_at_period_end = 0");
+      }
+    }
+    if (notes !== undefined) {
+      updates.push("notes = ?");
+      values.push(notes);
+    }
+
+    if (updates.length === 0)
+      return res
+        .status(400)
+        .json({ success: false, error: "Nada que actualizar" });
+
+    values.push(subId);
+    await pool.query(
+      `UPDATE subscriptions SET ${updates.join(", ")} WHERE id = ?`,
+      values,
+    );
+
+    res.json({
+      success: true,
+      message: "Suscripción actualizada correctamente",
+    });
+  } catch (error) {
+    console.error("Admin update subscription error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error al actualizar suscripción" });
+  }
+};
+
+/**
  * GET /api/admin/blog/categories
  * List all blog categories
  */
@@ -4713,6 +4848,11 @@ function createServer() {
     handleAdminDeleteBlogPost as RequestHandler,
   );
   app.get("/api/admin/blog/categories", handleAdminGetBlogCategories);
+  app.get("/api/admin/subscriptions", handleAdminGetSubscriptions);
+  app.put(
+    "/api/admin/subscriptions/:id",
+    handleAdminUpdateSubscription as RequestHandler,
+  );
 
   // 404 handler - only for API routes
   app.use("/api", (_req, res) => {

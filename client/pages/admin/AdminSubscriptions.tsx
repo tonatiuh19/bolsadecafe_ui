@@ -9,13 +9,16 @@ import {
   moveOrderToDelivered,
   clearActionState,
   updateOrderStatusLocally,
+  fetchAdminSubscriptions,
+  adminUpdateSubscription,
+  clearSubscriptionActionState,
 } from "@/store/slices/adminSlice";
 import {
   fetchCoffeeCatalog,
   createCoffee,
   clearCoffeeActionState,
 } from "@/store/slices/coffeeCatalogSlice";
-import type { AdminOrder } from "@shared/api";
+import type { AdminOrder, AdminSubscription } from "@shared/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +56,12 @@ import {
   ExternalLink,
   Receipt,
   Info,
+  CreditCard,
+  XCircle,
+  PauseCircle,
+  PlayCircle,
+  ChevronDown,
+  StickyNote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -220,6 +229,89 @@ function OrderCard({
   );
 }
 
+// ─── Status helpers ───────────────────────────────────────────────────────────
+
+const SUB_STATUS_COLORS: Record<string, string> = {
+  active: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  trialing: "bg-blue-50 text-blue-700 border-blue-200",
+  past_due: "bg-amber-50 text-amber-700 border-amber-200",
+  paused: "bg-neutral-100 text-neutral-600 border-neutral-200",
+  incomplete: "bg-amber-50 text-amber-700 border-amber-200",
+  cancelled: "bg-red-50 text-red-600 border-red-200",
+};
+const SUB_STATUS_LABELS: Record<string, string> = {
+  active: "Activa",
+  trialing: "En prueba",
+  past_due: "Pago vencido",
+  paused: "Pausada",
+  incomplete: "Incompleta",
+  cancelled: "Cancelada",
+};
+
+function SubscriptionRow({
+  sub,
+  onManage,
+}: {
+  sub: AdminSubscription;
+  onManage: (s: AdminSubscription) => void;
+}) {
+  function fmt(d?: string | null) {
+    if (!d) return "—";
+    return new Date(d).toLocaleDateString("es-MX", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
+  return (
+    <tr className="hover:bg-muted/30 transition-colors">
+      <td className="px-4 py-3">
+        <p className="font-semibold text-foreground text-sm">
+          {sub.userFullName}
+        </p>
+        <p className="text-xs text-muted-foreground">{sub.userEmail}</p>
+      </td>
+      <td className="px-4 py-3 hidden md:table-cell">
+        <p className="text-sm">{sub.planName}</p>
+        <p className="text-xs text-muted-foreground">
+          {sub.grindTypeName}
+          {sub.planPrice ? ` · $${sub.planPrice.toFixed(0)}/mes` : ""}
+        </p>
+      </td>
+      <td className="px-4 py-3 hidden lg:table-cell">
+        <p className="text-sm">
+          {sub.shippingCity ? `${sub.shippingCity}, ${sub.shippingState}` : "—"}
+        </p>
+      </td>
+      <td className="px-4 py-3 hidden lg:table-cell text-sm text-muted-foreground">
+        {fmt(sub.currentPeriodEnd)}
+      </td>
+      <td className="px-4 py-3">
+        <span
+          className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${SUB_STATUS_COLORS[sub.status] ?? SUB_STATUS_COLORS.active}`}
+        >
+          {SUB_STATUS_LABELS[sub.status] ?? sub.status}
+        </span>
+        {sub.cancelAtPeriodEnd && (
+          <span className="block text-xs text-amber-600 mt-0.5">
+            ⚠ cancela al vencer
+          </span>
+        )}
+      </td>
+      <td className="px-4 py-3 text-right">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => onManage(sub)}
+          className="text-xs h-7"
+        >
+          Gestionar
+        </Button>
+      </td>
+    </tr>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function AdminSubscriptions() {
@@ -232,10 +324,31 @@ export default function AdminSubscriptions() {
     actionLoading,
     actionError,
     actionSuccess,
+    subscriptions,
+    subscriptionsLoading,
+    subscriptionsError,
+    subscriptionActionLoading,
+    subscriptionActionError,
+    subscriptionActionSuccess,
   } = useAppSelector((s) => s.admin);
   const { items: coffees, actionLoading: coffeeActionLoading } = useAppSelector(
     (s) => s.coffeeCatalog,
   );
+
+  // Tab
+  const [activeTab, setActiveTab] = useState<"orders" | "subscriptions">(
+    "orders",
+  );
+
+  // Subscription management dialog
+  const [manageSub, setManageSub] = useState<AdminSubscription | null>(null);
+  const [newStatus, setNewStatus] = useState<string>("");
+  const [newNotes, setNewNotes] = useState<string>("");
+  const [cancelOnStripe, setCancelOnStripe] = useState(true);
+  const [subToast, setSubToast] = useState<{
+    type: "success" | "error";
+    msg: string;
+  } | null>(null);
 
   // Drag state
   const [draggingId, setDraggingId] = useState<number | null>(null);
@@ -260,7 +373,23 @@ export default function AdminSubscriptions() {
   useEffect(() => {
     dispatch(fetchAdminOrders());
     dispatch(fetchCoffeeCatalog());
+    dispatch(fetchAdminSubscriptions());
   }, [dispatch]);
+
+  useEffect(() => {
+    if (subscriptionActionSuccess) {
+      setSubToast({ type: "success", msg: subscriptionActionSuccess });
+      dispatch(clearSubscriptionActionState());
+      dispatch(fetchAdminSubscriptions());
+      setManageSub(null);
+      setTimeout(() => setSubToast(null), 4000);
+    }
+    if (subscriptionActionError) {
+      setSubToast({ type: "error", msg: subscriptionActionError });
+      dispatch(clearSubscriptionActionState());
+      setTimeout(() => setSubToast(null), 5000);
+    }
+  }, [subscriptionActionSuccess, subscriptionActionError, dispatch]);
 
   useEffect(() => {
     if (actionSuccess) {
@@ -413,157 +542,397 @@ export default function AdminSubscriptions() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Suscripciones</h1>
+          <h1 className="text-2xl font-bold text-foreground">
+            Suscripciones & Órdenes
+          </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Pipeline de órdenes — arrastra para cambiar estado
+            Gestiona suscripciones y el pipeline de órdenes
           </p>
         </div>
         <button
-          onClick={() => dispatch(fetchAdminOrders())}
+          onClick={() => {
+            if (activeTab === "orders") dispatch(fetchAdminOrders());
+            else dispatch(fetchAdminSubscriptions());
+          }}
           className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           title="Actualizar"
         >
           <RefreshCw
-            className={`w-4 h-4 text-muted-foreground ${ordersLoading ? "animate-spin" : ""}`}
+            className={`w-4 h-4 text-muted-foreground ${ordersLoading || subscriptionsLoading ? "animate-spin" : ""}`}
           />
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab("orders")}
+          className={cn(
+            "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+            activeTab === "orders"
+              ? "bg-white dark:bg-neutral-800 text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Package className="w-4 h-4 inline mr-1.5" />
+          Órdenes
+        </button>
+        <button
+          onClick={() => setActiveTab("subscriptions")}
+          className={cn(
+            "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+            activeTab === "subscriptions"
+              ? "bg-white dark:bg-neutral-800 text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <CreditCard className="w-4 h-4 inline mr-1.5" />
+          Suscripciones
+        </button>
+      </div>
+
       {/* Error */}
-      {ordersError && (
+      {activeTab === "orders" && ordersError && (
         <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-destructive" />
           <p className="text-destructive text-sm">{ordersError}</p>
         </div>
       )}
-
-      {/* Toast */}
-      {toast && (
-        <div
-          className={cn(
-            "fixed top-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium transition-all duration-300 animate-in slide-in-from-right-5",
-            toast.type === "success"
-              ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-950 dark:border-green-800 dark:text-green-200"
-              : "bg-red-50 border-red-200 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200",
-          )}
-        >
-          {toast.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4" />
-          ) : (
-            <AlertCircle className="w-4 h-4" />
-          )}
-          {toast.msg}
-          <button onClick={() => setToast(null)} className="ml-1">
-            <X className="w-3.5 h-3.5" />
-          </button>
+      {activeTab === "subscriptions" && subscriptionsError && (
+        <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-destructive" />
+          <p className="text-destructive text-sm">{subscriptionsError}</p>
         </div>
       )}
 
-      {/* Pipeline board */}
-      <div
-        className="grid lg:grid-cols-3 gap-4 min-h-[600px]"
-        onDragEnd={handleDragEnd}
-      >
-        {COLUMNS.map((col) => {
-          const colOrders = grouped[col.id];
-          const isOver = dragOverCol === col.id;
-
+      {/* Toast */}
+      {(toast || subToast) &&
+        (() => {
+          const t = toast || subToast!;
           return (
             <div
-              key={col.id}
-              onDragOver={(e) => handleDragOver(e, col.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, col.id)}
               className={cn(
-                "flex flex-col rounded-2xl border-2 transition-all duration-200 min-h-[500px]",
-                isOver
-                  ? `${col.borderColor} shadow-lg scale-[1.01]`
-                  : "border-gray-200 dark:border-neutral-800",
-                isOver && col.id === "shipped"
-                  ? "bg-amber-50/50 dark:bg-amber-950/10"
-                  : "",
-                isOver && col.id === "delivered"
-                  ? "bg-green-50/50 dark:bg-green-950/10"
-                  : "",
-                isOver && col.id === "processing"
-                  ? "bg-blue-50/50 dark:bg-blue-950/10"
-                  : "bg-white dark:bg-neutral-900/50",
+                "fixed top-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium transition-all duration-300 animate-in slide-in-from-right-5",
+                t.type === "success"
+                  ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-950 dark:border-green-800 dark:text-green-200"
+                  : "bg-red-50 border-red-200 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200",
               )}
             >
-              {/* Column header */}
-              <div
-                className={cn(
-                  "px-4 py-3.5 rounded-t-xl border-b border-gray-100 dark:border-neutral-800",
-                  col.headerBg,
-                )}
+              {t.type === "success" ? (
+                <CheckCircle2 className="w-4 h-4" />
+              ) : (
+                <AlertCircle className="w-4 h-4" />
+              )}
+              {t.msg}
+              <button
+                onClick={() => {
+                  setToast(null);
+                  setSubToast(null);
+                }}
+                className="ml-1"
               >
-                <div className="flex items-center gap-2.5">
-                  <col.icon className={cn("w-5 h-5", col.color)} />
-                  <span className="font-bold text-foreground text-sm">
-                    {col.label}
-                  </span>
-                  <span
-                    className={cn(
-                      "ml-auto text-xs font-bold px-2.5 py-0.5 rounded-full",
-                      col.badgeColor,
-                    )}
-                  >
-                    {colOrders.length}
-                  </span>
-                </div>
-              </div>
-
-              {/* Cards */}
-              <div className="flex-1 p-3 space-y-3 overflow-y-auto">
-                {ordersLoading && colOrders.length === 0 ? (
-                  <div className="flex items-center justify-center h-32">
-                    <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                  </div>
-                ) : colOrders.length === 0 ? (
-                  <div
-                    className={cn(
-                      "flex flex-col items-center justify-center h-32 rounded-xl border-2 border-dashed transition-all",
-                      isOver
-                        ? col.borderColor
-                        : "border-gray-200 dark:border-neutral-700",
-                    )}
-                  >
-                    <col.icon
-                      className={cn("w-8 h-8 mb-2 opacity-30", col.color)}
-                    />
-                    <p className="text-xs text-muted-foreground opacity-70">
-                      {isOver ? "Soltar aquí" : "Sin órdenes"}
-                    </p>
-                  </div>
-                ) : (
-                  colOrders.map((order) => (
-                    <OrderCard
-                      key={order.id}
-                      order={order}
-                      onDragStart={handleDragStart}
-                      isDragging={draggingId === order.id}
-                    />
-                  ))
-                )}
-
-                {/* Drop zone indicator */}
-                {isOver && colOrders.length > 0 && (
-                  <div
-                    className={cn(
-                      "h-14 rounded-xl border-2 border-dashed flex items-center justify-center transition-all",
-                      col.borderColor,
-                    )}
-                  >
-                    <p className={cn("text-xs font-medium", col.color)}>
-                      Soltar aquí
-                    </p>
-                  </div>
-                )}
-              </div>
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           );
-        })}
-      </div>
+        })()}
+
+      {/* ── Orders Pipeline (tab) ── */}
+      {activeTab === "orders" && (
+        <div
+          className="grid lg:grid-cols-3 gap-4 min-h-[600px]"
+          onDragEnd={handleDragEnd}
+        >
+          {COLUMNS.map((col) => {
+            const colOrders = grouped[col.id];
+            const isOver = dragOverCol === col.id;
+
+            return (
+              <div
+                key={col.id}
+                onDragOver={(e) => handleDragOver(e, col.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, col.id)}
+                className={cn(
+                  "flex flex-col rounded-2xl border-2 transition-all duration-200 min-h-[500px]",
+                  isOver
+                    ? `${col.borderColor} shadow-lg scale-[1.01]`
+                    : "border-gray-200 dark:border-neutral-800",
+                  isOver && col.id === "shipped"
+                    ? "bg-amber-50/50 dark:bg-amber-950/10"
+                    : "",
+                  isOver && col.id === "delivered"
+                    ? "bg-green-50/50 dark:bg-green-950/10"
+                    : "",
+                  isOver && col.id === "processing"
+                    ? "bg-blue-50/50 dark:bg-blue-950/10"
+                    : "bg-white dark:bg-neutral-900/50",
+                )}
+              >
+                {/* Column header */}
+                <div
+                  className={cn(
+                    "px-4 py-3.5 rounded-t-xl border-b border-gray-100 dark:border-neutral-800",
+                    col.headerBg,
+                  )}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <col.icon className={cn("w-5 h-5", col.color)} />
+                    <span className="font-bold text-foreground text-sm">
+                      {col.label}
+                    </span>
+                    <span
+                      className={cn(
+                        "ml-auto text-xs font-bold px-2.5 py-0.5 rounded-full",
+                        col.badgeColor,
+                      )}
+                    >
+                      {colOrders.length}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Cards */}
+                <div className="flex-1 p-3 space-y-3 overflow-y-auto">
+                  {ordersLoading && colOrders.length === 0 ? (
+                    <div className="flex items-center justify-center h-32">
+                      <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                    </div>
+                  ) : colOrders.length === 0 ? (
+                    <div
+                      className={cn(
+                        "flex flex-col items-center justify-center h-32 rounded-xl border-2 border-dashed transition-all",
+                        isOver
+                          ? col.borderColor
+                          : "border-gray-200 dark:border-neutral-700",
+                      )}
+                    >
+                      <col.icon
+                        className={cn("w-8 h-8 mb-2 opacity-30", col.color)}
+                      />
+                      <p className="text-xs text-muted-foreground opacity-70">
+                        {isOver ? "Soltar aquí" : "Sin órdenes"}
+                      </p>
+                    </div>
+                  ) : (
+                    colOrders.map((order) => (
+                      <OrderCard
+                        key={order.id}
+                        order={order}
+                        onDragStart={handleDragStart}
+                        isDragging={draggingId === order.id}
+                      />
+                    ))
+                  )}
+
+                  {/* Drop zone indicator */}
+                  {isOver && colOrders.length > 0 && (
+                    <div
+                      className={cn(
+                        "h-14 rounded-xl border-2 border-dashed flex items-center justify-center transition-all",
+                        col.borderColor,
+                      )}
+                    >
+                      <p className={cn("text-xs font-medium", col.color)}>
+                        Soltar aquí
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Subscriptions Tab ── */}
+      {activeTab === "subscriptions" && (
+        <div className="space-y-4">
+          {subscriptionsLoading ? (
+            <div className="flex items-center gap-3 py-10 text-muted-foreground">
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              <span className="text-sm">Cargando suscripciones…</span>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-gray-200 dark:border-neutral-800 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 border-b border-gray-200 dark:border-neutral-800">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">
+                      Cliente
+                    </th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide hidden md:table-cell">
+                      Plan
+                    </th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide hidden lg:table-cell">
+                      Dirección
+                    </th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide hidden lg:table-cell">
+                      Renovación
+                    </th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">
+                      Estado
+                    </th>
+                    <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">
+                      Acciones
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+                  {subscriptions.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="text-center py-12 text-muted-foreground text-sm"
+                      >
+                        <Coffee className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                        Sin suscripciones
+                      </td>
+                    </tr>
+                  ) : (
+                    subscriptions.map((sub) => (
+                      <SubscriptionRow
+                        key={sub.id}
+                        sub={sub}
+                        onManage={(s) => {
+                          setManageSub(s);
+                          setNewStatus(s.status);
+                          setNewNotes(s.notes ?? "");
+                          setCancelOnStripe(true);
+                        }}
+                      />
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Manage Subscription Dialog ── */}
+      <Dialog open={!!manageSub} onOpenChange={(v) => !v && setManageSub(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-brand-600" />
+              Gestionar Suscripción #{manageSub?.id}
+            </DialogTitle>
+          </DialogHeader>
+          {manageSub && (
+            <div className="space-y-4">
+              <div className="p-3 bg-muted/50 rounded-xl text-sm space-y-1">
+                <p className="font-semibold text-foreground">
+                  {manageSub.userFullName}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  {manageSub.userEmail}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  {manageSub.planName} · {manageSub.grindTypeName}
+                  {manageSub.planPrice
+                    ? ` · $${manageSub.planPrice.toFixed(0)} MXN/mes`
+                    : ""}
+                </p>
+                {manageSub.stripeSubscriptionId && (
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {manageSub.stripeSubscriptionId}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Nuevo Estado
+                </label>
+                <Select value={newStatus} onValueChange={setNewStatus}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Activa</SelectItem>
+                    <SelectItem value="paused">Pausada</SelectItem>
+                    <SelectItem value="past_due">Pago Vencido</SelectItem>
+                    <SelectItem value="cancelled">Cancelada</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {newStatus === "cancelled" && manageSub.stripeSubscriptionId && (
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={cancelOnStripe}
+                    onChange={(e) => setCancelOnStripe(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-foreground">
+                    También cancelar en Stripe
+                  </span>
+                </label>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Notas internas
+                </label>
+                <Textarea
+                  rows={3}
+                  placeholder="Razón de cancelación, observaciones, etc."
+                  value={newNotes}
+                  onChange={(e) => setNewNotes(e.target.value)}
+                />
+              </div>
+
+              {subscriptionActionError && (
+                <p className="text-xs text-red-500">
+                  {subscriptionActionError}
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setManageSub(null)}
+              disabled={subscriptionActionLoading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={subscriptionActionLoading}
+              className={
+                newStatus === "cancelled"
+                  ? "bg-red-600 hover:bg-red-700 text-white"
+                  : "bg-brand-700 hover:bg-brand-800 text-white"
+              }
+              onClick={() => {
+                if (!manageSub) return;
+                dispatch(
+                  adminUpdateSubscription({
+                    id: manageSub.id,
+                    payload: {
+                      status: newStatus as any,
+                      notes: newNotes || undefined,
+                      cancelOnStripe:
+                        newStatus === "cancelled" ? cancelOnStripe : false,
+                    },
+                  }),
+                );
+              }}
+            >
+              {subscriptionActionLoading ? (
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Guardando…
+                </span>
+              ) : (
+                "Guardar Cambios"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Shipping Dialog ── */}
       <Dialog

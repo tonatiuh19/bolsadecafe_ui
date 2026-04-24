@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import { loadStripe } from "@stripe/stripe-js";
@@ -76,6 +77,14 @@ import {
 import StripeCheckoutForm from "@/components/StripeCheckoutForm";
 import { fetchStates } from "@/store/slices/statesSlice";
 import { fetchPlans } from "@/store/slices/plansSlice";
+import {
+  FaCcVisa,
+  FaCcMastercard,
+  FaCcAmex,
+  FaCcDiscover,
+  FaCcJcb,
+  FaCreditCard,
+} from "react-icons/fa";
 
 const stripePromise = loadStripe(
   import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "",
@@ -183,19 +192,19 @@ type ActiveDialog =
   | null;
 
 function CardBrandBadge({ brand }: { brand: string }) {
-  const labels: Record<string, string> = {
-    visa: "VISA",
-    mastercard: "MC",
-    amex: "AMEX",
-    discover: "DISC",
-    jcb: "JCB",
-    unionpay: "UP",
+  const iconMap: Record<string, { icon: React.ElementType; color: string }> = {
+    visa: { icon: FaCcVisa, color: "#1A1F71" },
+    mastercard: { icon: FaCcMastercard, color: "#EB001B" },
+    amex: { icon: FaCcAmex, color: "#007BC1" },
+    discover: { icon: FaCcDiscover, color: "#FF6600" },
+    jcb: { icon: FaCcJcb, color: "#003087" },
   };
-  return (
-    <span className="inline-flex items-center justify-center w-10 h-6 rounded bg-neutral-100 text-neutral-700 font-bold text-xs border border-neutral-200">
-      {labels[brand] ?? brand.toUpperCase().slice(0, 4)}
-    </span>
-  );
+
+  const match = iconMap[brand.toLowerCase()];
+  const Icon = match?.icon ?? FaCreditCard;
+  const color = match?.color ?? "#6b7280";
+
+  return <Icon style={{ color, fontSize: "2rem", flexShrink: 0 }} />;
 }
 
 export default function UserDashboard({ open, onClose }: UserDashboardProps) {
@@ -221,6 +230,8 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
   const setupLoading = useAppSelector(selectPaymentLoading);
   const setupError = useAppSelector(selectPaymentError);
   const paymentMethodsError = useAppSelector(selectPaymentMethodsError);
+
+  const navigate = useNavigate();
 
   const [dialog, setDialog] = useState<ActiveDialog>(null);
   const [cancelPhrase, setCancelPhrase] = useState("");
@@ -248,9 +259,16 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
       dispatch(fetchMySubscription());
       dispatch(fetchStates());
       dispatch(fetchPlans());
-      dispatch(fetchPaymentMethods());
+      // Payment methods are fetched once subscriptions load — see below
     }
   }, [open, dispatch]);
+
+  // Re-fetch payment methods scoped to the active subscription whenever it changes
+  useEffect(() => {
+    if (open) {
+      dispatch(fetchPaymentMethods(subscription?.stripeSubscriptionId));
+    }
+  }, [open, subscription?.id, dispatch]);
 
   // Close dialog + refresh on success
   useEffect(() => {
@@ -418,16 +436,36 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
             )}
 
             {/* Subscription list (multi) */}
-            {!loading && subscriptions.length > 1 && (
+            {!loading && (
               <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400 mb-3">
-                  Mis Suscripciones
-                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
+                    Mis Suscripciones
+                  </p>
+                  <button
+                    onClick={() => {
+                      onClose();
+                      navigate("/subscription-wizard");
+                    }}
+                    className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-800 transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Nueva
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {subscriptions.map((sub) => (
                     <button
                       key={sub.id}
-                      onClick={() => dispatch(setManagedSubscription(sub))}
+                      onClick={() => {
+                        dispatch(setManagedSubscription(sub));
+                        dispatch(fetchPaymentMethods(sub.stripeSubscriptionId));
+                        // Reset all per-subscription local state
+                        dispatch(clearActionState());
+                        setSelectedPlanId(null);
+                        setShowDanger(false);
+                        setDialog(null);
+                      }}
                       className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all text-left
                         ${
                           subscription?.id === sub.id
@@ -440,7 +478,8 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                           {sub.planName}
                         </p>
                         <p className="text-xs text-neutral-400">
-                          {sub.grindTypeName}
+                          {sub.grindTypeName} ·{" "}
+                          {sub.shippingAddress?.city ?? "Sin dirección"}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 ml-2">
@@ -455,104 +494,99 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                       </div>
                     </button>
                   ))}
+                  {subscriptions.length === 0 && !loading && (
+                    <div className="p-4 rounded-xl border border-dashed border-neutral-200 text-center">
+                      <p className="text-sm text-neutral-400">
+                        Sin suscripciones activas
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Subscription card */}
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400 mb-3">
-                {subscriptions.length > 1 ? "Detalle" : "Suscripción Activa"}
-              </p>
+            {/* Subscription card – detail of selected */}
+            {subscription && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400 mb-3">
+                  Detalle
+                </p>
 
-              {loading ? (
-                <div className="flex items-center gap-3 p-4 rounded-xl border border-neutral-100 bg-neutral-50">
-                  <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
-                  <span className="text-sm text-neutral-500">Cargando…</span>
-                </div>
-              ) : !subscription ? (
-                <div className="p-5 rounded-xl border border-neutral-100 bg-neutral-50 text-center">
-                  <Coffee className="h-8 w-8 text-neutral-300 mx-auto mb-2" />
-                  <p className="text-sm text-neutral-500">
-                    No tienes una suscripción activa
-                  </p>
-                  <Button
-                    size="sm"
-                    className="mt-3 bg-brand-700 hover:bg-brand-800 text-white"
-                    onClick={onClose}
-                  >
-                    Ver Planes
-                  </Button>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-brand-100 bg-white shadow-sm shadow-brand-900/5 overflow-hidden">
-                  {/* Plan header */}
-                  <div className="bg-gradient-to-r from-brand-700 to-brand-800 px-5 py-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-brand-200 text-xs font-medium uppercase tracking-widest mb-1">
-                          Plan
-                        </p>
-                        <p className="text-white font-bold text-lg leading-tight">
-                          {subscription.planName}
-                        </p>
-                        <p className="text-brand-200 text-sm mt-0.5">
-                          {subscription.grindTypeName}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-white font-bold text-xl">
-                          ${subscription.planPrice.toLocaleString("es-MX")}
-                        </p>
-                        <p className="text-brand-200 text-xs">MXN / mes</p>
-                      </div>
-                    </div>
+                {loading ? (
+                  <div className="flex items-center gap-3 p-4 rounded-xl border border-neutral-100 bg-neutral-50">
+                    <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
+                    <span className="text-sm text-neutral-500">Cargando…</span>
                   </div>
-
-                  {/* Status & dates */}
-                  <div className="px-5 py-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-neutral-500">Estado</span>
-                      <span
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${STATUS_COLORS[subscription.status] ?? STATUS_COLORS.active}`}
-                      >
-                        {STATUS_LABELS[subscription.status] ??
-                          subscription.status}
-                      </span>
+                ) : (
+                  <div className="rounded-xl border border-brand-100 bg-white shadow-sm shadow-brand-900/5 overflow-hidden">
+                    {/* Plan header */}
+                    <div className="bg-gradient-to-r from-brand-700 to-brand-800 px-5 py-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-brand-200 text-xs font-medium uppercase tracking-widest mb-1">
+                            Plan
+                          </p>
+                          <p className="text-white font-bold text-lg leading-tight">
+                            {subscription.planName}
+                          </p>
+                          <p className="text-brand-200 text-sm mt-0.5">
+                            {subscription.grindTypeName}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-white font-bold text-xl">
+                            ${subscription.planPrice.toLocaleString("es-MX")}
+                          </p>
+                          <p className="text-brand-200 text-xs">MXN / mes</p>
+                        </div>
+                      </div>
                     </div>
 
-                    {subscription.cancelAtPeriodEnd && (
-                      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                        ⚠️ Cancelación programada — activa hasta{" "}
-                        {fmt(subscription.currentPeriodEnd)}
-                      </p>
-                    )}
-
-                    <div className="flex items-center gap-2 text-xs text-neutral-500">
-                      <Calendar className="h-3.5 w-3.5" />
-                      <span>
-                        Próxima renovación:{" "}
-                        <strong className="text-neutral-700">
-                          {fmt(subscription.currentPeriodEnd)}
-                        </strong>
-                      </span>
-                    </div>
-
-                    {subscription.shippingAddress && (
-                      <div className="flex items-start gap-2 text-xs text-neutral-500">
-                        <MapPin className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                        <span>
-                          {subscription.shippingAddress.fullName} ·{" "}
-                          {subscription.shippingAddress.streetAddress},{" "}
-                          {subscription.shippingAddress.city},{" "}
-                          {subscription.shippingAddress.state}
+                    {/* Status & dates */}
+                    <div className="px-5 py-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-neutral-500">Estado</span>
+                        <span
+                          className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${STATUS_COLORS[subscription.status] ?? STATUS_COLORS.active}`}
+                        >
+                          {STATUS_LABELS[subscription.status] ??
+                            subscription.status}
                         </span>
                       </div>
-                    )}
+
+                      {subscription.cancelAtPeriodEnd && (
+                        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          ⚠️ Cancelación programada — activa hasta{" "}
+                          {fmt(subscription.currentPeriodEnd)}
+                        </p>
+                      )}
+
+                      <div className="flex items-center gap-2 text-xs text-neutral-500">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>
+                          Próxima renovación:{" "}
+                          <strong className="text-neutral-700">
+                            {fmt(subscription.currentPeriodEnd)}
+                          </strong>
+                        </span>
+                      </div>
+
+                      {subscription.shippingAddress && (
+                        <div className="flex items-start gap-2 text-xs text-neutral-500">
+                          <MapPin className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                          <span>
+                            {subscription.shippingAddress.fullName} ·{" "}
+                            {subscription.shippingAddress.streetAddress},{" "}
+                            {subscription.shippingAddress.city},{" "}
+                            {subscription.shippingAddress.state}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {subscription && !subscription.cancelAtPeriodEnd && (
               <>
@@ -567,7 +601,7 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                     <ActionRow
                       icon={ArrowUpCircle}
                       label="Cambiar Plan"
-                      description="Actualiza a más o menos café"
+                      description={`${subscription.planName} · $${subscription.planPrice.toLocaleString("es-MX")}/mes`}
                       onClick={() => {
                         setSelectedPlanId(null);
                         openDialog("plan");
@@ -576,13 +610,20 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                     <ActionRow
                       icon={MapPin}
                       label="Actualizar Dirección"
-                      description="Cambia dónde recibir tu café"
+                      description={
+                        subscription.shippingAddress
+                          ? `${subscription.shippingAddress.streetAddress}, ${subscription.shippingAddress.city}`
+                          : "Cambia dónde recibir tu café"
+                      }
                       onClick={() => openDialog("address")}
                     />
                     <ActionRow
                       icon={User}
                       label="Persona de Entrega"
-                      description="Quién recibe el paquete"
+                      description={
+                        subscription.shippingAddress?.fullName ??
+                        "Quién recibe el paquete"
+                      }
                       onClick={() => openDialog("contact")}
                     />
                   </div>
@@ -626,8 +667,18 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                             ) : (
                               <button
                                 onClick={() =>
-                                  dispatch(setDefaultPaymentMethod(pm.id)).then(
-                                    () => dispatch(fetchPaymentMethods()),
+                                  dispatch(
+                                    setDefaultPaymentMethod({
+                                      paymentMethodId: pm.id,
+                                      stripeSubscriptionId:
+                                        subscription?.stripeSubscriptionId,
+                                    }),
+                                  ).then(() =>
+                                    dispatch(
+                                      fetchPaymentMethods(
+                                        subscription?.stripeSubscriptionId,
+                                      ),
+                                    ),
                                   )
                                 }
                                 className="text-xs text-brand-600 hover:text-brand-800 font-medium"
@@ -638,7 +689,11 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                             <button
                               onClick={() =>
                                 dispatch(removePaymentMethod(pm.id)).then(() =>
-                                  dispatch(fetchPaymentMethods()),
+                                  dispatch(
+                                    fetchPaymentMethods(
+                                      subscription?.stripeSubscriptionId,
+                                    ),
+                                  ),
                                 )
                               }
                               className="text-neutral-300 hover:text-red-500 transition-colors ml-1"
@@ -1089,7 +1144,9 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                 onSuccess={async () => {
                   setDialog(null);
                   dispatch(clearPaymentState());
-                  dispatch(fetchPaymentMethods());
+                  dispatch(
+                    fetchPaymentMethods(subscription?.stripeSubscriptionId),
+                  );
                 }}
                 onError={(err) => {
                   logger.error("Add card error:", err);

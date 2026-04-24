@@ -756,3 +756,51 @@ export interface AdminCreateBlogPostRequest {
 export interface AdminUpdateBlogPostRequest extends AdminCreateBlogPostRequest {
   id: number;
 }
+
+// ─── Admin Subscriptions ──────────────────────────────────────────────────────
+
+export interface AdminSubscription {
+  id: number;
+  userId: number;
+  userEmail: string;
+  userFullName: string;
+  planId: number;
+  planName: string;
+  planWeight: string;
+  planPrice: number;
+  grindTypeName: string;
+  status:
+    | "active"
+    | "cancelled"
+    | "paused"
+    | "past_due"
+    | "incomplete"
+    | "trialing";
+  stripeSubscriptionId?: string;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  cancelAtPeriodEnd: boolean;
+  cancelledAt?: string;
+  notes?: string;
+  createdAt: string;
+  shippingCity?: string;
+  shippingState?: string;
+  shippingAddress?: string;
+}
+
+export interface AdminSubscriptionsResponse {
+  success: boolean;
+  subscriptions: AdminSubscription[];
+}
+
+export interface AdminUpdateSubscriptionRequest {
+  status?:
+    | "active"
+    | "cancelled"
+    | "paused"
+    | "past_due"
+    | "incomplete"
+    | "trialing";
+  notes?: string;
+  cancelOnStripe?: boolean;
+}
