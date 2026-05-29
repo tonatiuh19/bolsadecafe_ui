@@ -55,6 +55,10 @@ import {
 } from "@/store/slices/subscriptionWizardSlice";
 import AuthModal from "@/components/AuthModal";
 import StripeCheckoutForm from "@/components/StripeCheckoutForm";
+import {
+  MobileSubscriptionSummaryDock,
+  SubscriptionSummaryContent,
+} from "@/components/SubscriptionWizardSummary";
 
 interface SubscriptionPlan {
   id: string;
@@ -111,17 +115,23 @@ export default function SubscriptionWizard() {
 
   const [wizardStep, setWizardStep] = useState(0);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [mobileSummaryOpen, setMobileSummaryOpen] = useState(false);
   const [stripePromise] = useState(() =>
     loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY),
   );
 
   // Always clear stale payment state on mount so a previous succeeded
   // SetupIntent never leaks into a new subscription flow.
+  // Also force-remove any Radix scroll-lock left behind by a Sheet/Dialog
+  // on the previous page (e.g. UserDashboard) that unmounted mid-animation.
   useEffect(() => {
+    document.body.style.pointerEvents = "";
+    document.body.style.overflow = "";
+    document.body.removeAttribute("data-scroll-locked");
+    // Remove any leftover aria-hidden on the root that Radix may have set
+    document.getElementById("root")?.removeAttribute("aria-hidden");
     dispatch(clearPaymentState());
-    if (selectedPlanId) {
-      dispatch(resetWizardData());
-    }
+    dispatch(resetWizardData());
   }, []);
 
   // Fetch data on mount
@@ -158,6 +168,7 @@ export default function SubscriptionWizard() {
   // Scroll to top when step changes
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
+    setMobileSummaryOpen(false);
   }, [wizardStep]);
 
   // Create a fresh SetupIntent every time the payment step is reached.
@@ -278,7 +289,7 @@ export default function SubscriptionWizard() {
 
       <>
         {/* Header with Stepper */}
-        <header className="bg-white border-b border-neutral-200 sticky top-0 z-40 shadow-sm">
+        <header className="bg-white border-b border-neutral-200 sticky top-0 z-40 shadow-sm safe-top">
           <div className="max-w-7xl mx-auto px-4 py-3 sm:px-6 sm:py-5">
             <div className="flex items-center justify-between mb-3 sm:mb-5">
               <Button
@@ -288,16 +299,18 @@ export default function SubscriptionWizard() {
                 onClick={() => navigate("/")}
               >
                 <Home className="h-4 w-4 mr-1.5" />
-                <span className="font-medium text-sm">Inicio</span>
+                <span className="font-medium text-sm">Volver al inicio</span>
               </Button>
-              <h1 className="text-sm sm:text-xl font-bold text-neutral-900 text-center">
-                Configura tu Suscripción
-              </h1>
+              <img
+                src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_dark.png"
+                alt="Bolsadecafé"
+                className="h-7 w-auto"
+              />
               <div className="w-16 sm:w-20" />
             </div>
 
             {/* Compact Stepper */}
-            <div className="flex items-center justify-center max-w-3xl mx-auto">
+            <div className="flex items-center justify-center max-w-3xl mx-auto overflow-x-auto scrollbar-hide -mx-1 px-1">
               {(hasPreselectedPlan
                 ? [
                     { step: 1, label: "Molido" },
@@ -356,7 +369,11 @@ export default function SubscriptionWizard() {
         </header>
 
         {/* Main Content */}
-        <main className="max-w-7xl mx-auto px-3 py-4 sm:px-6 sm:py-8">
+        <main
+          className={`max-w-7xl mx-auto px-3 py-4 sm:px-6 sm:py-8 ${
+            wizardStep !== 4 ? "pb-40 lg:pb-8" : ""
+          }`}
+        >
           {/* Content Grid */}
           <div className="grid lg:grid-cols-3 gap-4 lg:gap-8">
             {/* Left Side - Form (2/3 width on most steps, full width on payment) */}
@@ -1156,153 +1173,27 @@ export default function SubscriptionWizard() {
               </div>
             </div>
 
-            {/* Right Side - Summary (1/3 width) - Hidden on payment step */}
+            {/* Desktop sidebar — hidden on mobile (see sticky dock below) */}
             {wizardStep !== 4 && (
-              <div className="lg:col-span-1">
+              <div className="hidden lg:block lg:col-span-1">
                 <div className="sticky top-20 bg-white rounded-2xl border border-brand-100 p-4 sm:p-6 shadow-sm h-fit">
-                  <h4 className="text-lg sm:text-2xl font-bold text-neutral-900 mb-3 sm:mb-5">
-                    Resumen de tu suscripción
-                  </h4>
-
-                  {wizardData.selectedPlan ? (
-                    <>
-                      <div className="bg-gradient-to-br from-brand-50 to-brand-50/50 border border-brand-200 rounded-xl p-5 mb-6 transition-all">
-                        <div
-                          className={`w-12 h-12 rounded-xl bg-gradient-to-r ${wizardData.selectedPlan.gradient} flex items-center justify-center mb-4 shadow-md`}
-                        >
-                          <Coffee className="h-6 w-6 text-white" />
-                        </div>
-                        <h5 className="font-bold text-neutral-900 text-lg mb-1">
-                          {wizardData.selectedPlan.name}
-                        </h5>
-                        <p className="text-neutral-600 text-sm font-medium mb-4">
-                          {wizardData.selectedPlan.weight} por mes
-                        </p>
-                        <div className="bg-white px-4 py-3 rounded-lg mb-4">
-                          <div className="text-3xl font-bold text-brand-800">
-                            ${wizardData.selectedPlan.price}
-                          </div>
-                          <div className="text-neutral-600 text-xs font-medium">
-                            MXN/mes
-                          </div>
-                        </div>
-
-                        <div className="space-y-3 text-xs border-t border-brand-200 pt-4">
-                          {wizardData.grind && (
-                            <div className="flex justify-between items-center animate-fadeIn">
-                              <span className="text-neutral-600 font-medium">
-                                Molido:
-                              </span>
-                              <span className="bg-brand-100 px-2.5 py-1 rounded-full font-bold text-neutral-900">
-                                {wizardData.grind === "whole_bean" &&
-                                  "Grano entero"}
-                                {wizardData.grind === "coarse" && "Grueso"}
-                                {wizardData.grind === "medium" && "Medio"}
-                                {wizardData.grind === "fine" && "Fino"}
-                                {wizardData.grind === "extra_fine" &&
-                                  "Extra fino"}
-                              </span>
-                            </div>
-                          )}
-                          {(wizardData.streetAddress || wizardData.city) && (
-                            <div className="animate-fadeIn">
-                              <span className="text-neutral-600 font-medium block mb-1">
-                                Entrega:
-                              </span>
-                              <p className="text-neutral-700 font-medium text-xs bg-white p-2 rounded">
-                                {wizardData.fullName && (
-                                  <span className="block font-semibold">
-                                    {wizardData.fullName}
-                                  </span>
-                                )}
-                                {wizardData.streetAddress}
-                                {wizardData.streetAddress2 &&
-                                  `, ${wizardData.streetAddress2}`}
-                                {wizardData.city && (
-                                  <>
-                                    <br />
-                                    {wizardData.city}
-                                    {wizardData.stateId &&
-                                      states &&
-                                      states.length > 0 && (
-                                        <>
-                                          ,{" "}
-                                          {
-                                            states.find(
-                                              (s: any) =>
-                                                s.id.toString() ===
-                                                wizardData.stateId,
-                                            )?.name
-                                          }
-                                        </>
-                                      )}
-                                    {wizardData.postalCode &&
-                                      ` ${wizardData.postalCode}`}
-                                  </>
-                                )}
-                              </p>
-                            </div>
-                          )}
-                          {wizardData.recipientName && (
-                            <div className="flex justify-between items-center animate-fadeIn">
-                              <span className="text-neutral-600 font-medium">
-                                Destinatario:
-                              </span>
-                              <span className="font-bold text-neutral-900">
-                                {wizardData.recipientName.split(" ")[0]}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="bg-gradient-to-br from-brand-500/10 to-brand-600/5 border border-brand-200/50 rounded-xl p-4 mb-6">
-                        <h6 className="font-bold text-neutral-900 mb-3 flex items-center text-sm">
-                          <span className="text-base mr-2">✓</span>Incluido en
-                          tu plan:
-                        </h6>
-                        <ul className="space-y-2">
-                          <li className="flex items-start text-neutral-700 font-medium text-xs">
-                            <Check className="h-3 w-3 mr-2 text-brand-600 flex-shrink-0 mt-0.5" />
-                            <span>Café 100% mexicano</span>
-                          </li>
-                          <li className="flex items-start text-neutral-700 font-medium text-xs">
-                            <Check className="h-3 w-3 mr-2 text-brand-600 flex-shrink-0 mt-0.5" />
-                            <span>Envío gratis</span>
-                          </li>
-                          <li className="flex items-start text-neutral-700 font-medium text-xs">
-                            <Check className="h-3 w-3 mr-2 text-brand-600 flex-shrink-0 mt-0.5" />
-                            <span>Sin compromiso</span>
-                          </li>
-                          <li className="flex items-start text-neutral-700 font-medium text-xs">
-                            <Check className="h-3 w-3 mr-2 text-brand-600 flex-shrink-0 mt-0.5" />
-                            <span>Frescura garantizada</span>
-                          </li>
-                        </ul>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-6 text-center">
-                      <div className="inline-block p-3 bg-neutral-100 rounded-full mb-3">
-                        <Coffee className="h-8 w-8 text-neutral-400" />
-                      </div>
-                      <p className="text-neutral-600 font-medium text-sm">
-                        Selecciona un plan para comenzar
-                      </p>
-                    </div>
-                  )}
+                  <SubscriptionSummaryContent
+                    data={wizardData}
+                    grindOptions={displayGrindOptions}
+                    states={states ?? []}
+                  />
                 </div>
               </div>
             )}
           </div>
 
-          {/* Footer Navigation */}
-          <div className="mt-4 pt-4 sm:mt-8 sm:pt-6 border-t border-neutral-200">
-            <div className="flex justify-between items-center">
+          {/* Desktop footer navigation */}
+          <div className="hidden lg:block mt-4 pt-4 sm:mt-8 sm:pt-6 border-t border-neutral-200">
+            <div className="flex flex-row justify-between items-center gap-3">
               <Button
                 variant="outline"
                 onClick={prevStep}
-                className={`font-medium text-base px-6 py-3 rounded-lg border border-neutral-300 hover:bg-neutral-50 transition-colors ${
+                className={`font-medium text-base px-6 py-3 rounded-lg border border-neutral-300 hover:bg-neutral-50 transition-colors min-h-[48px] ${
                   wizardStep === initialStep ? "invisible" : ""
                 }`}
               >
@@ -1326,7 +1217,7 @@ export default function SubscriptionWizard() {
                           (!wizardData.recipientName ||
                             !wizardData.recipientPhone))))
                   }
-                  className="bg-gradient-to-r from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white font-medium text-base px-8 py-3 rounded-lg shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-gradient-to-r from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white font-medium text-base px-8 py-3 rounded-lg shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
                 >
                   Continuar
                   <ChevronRight className="ml-2 h-4 w-4" />
@@ -1334,7 +1225,75 @@ export default function SubscriptionWizard() {
               )}
             </div>
           </div>
+
+          {/* Payment step: inline nav on mobile only */}
+          {wizardStep === 4 && (
+            <div className="lg:hidden mt-4 pt-4 border-t border-neutral-200 safe-bottom">
+              <Button
+                variant="outline"
+                onClick={prevStep}
+                className="w-full font-medium text-base px-6 py-3 rounded-lg min-h-[48px]"
+              >
+                <ChevronRight className="mr-2 h-4 w-4 rotate-180" />
+                Anterior
+              </Button>
+            </div>
+          )}
         </main>
+
+        {/* Mobile: sticky summary dock + navigation (hidden on payment step) */}
+        {wizardStep !== 4 && (
+          <div className="lg:hidden fixed inset-x-0 bottom-0 z-50 safe-bottom pointer-events-none">
+            <div className="pointer-events-auto mx-2.5 mb-2 space-y-1.5">
+              <MobileSubscriptionSummaryDock
+                data={wizardData}
+                grindOptions={displayGrindOptions}
+                states={states ?? []}
+                wizardStep={wizardStep}
+                open={mobileSummaryOpen}
+                onOpenChange={setMobileSummaryOpen}
+              />
+
+              <div className="flex gap-1.5 p-1.5 rounded-xl bg-white border border-neutral-200 shadow-sm">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={prevStep}
+                  className={`flex-1 h-10 rounded-lg border-neutral-300 text-sm ${
+                    wizardStep === initialStep ? "invisible" : ""
+                  }`}
+                >
+                  <ChevronRight className="mr-1 h-3.5 w-3.5 rotate-180" />
+                  Anterior
+                </Button>
+
+                {wizardStep < totalSteps - 1 && (
+                  <Button
+                    size="sm"
+                    onClick={nextStep}
+                    disabled={
+                      (wizardStep === 0 && !wizardData.selectedPlan) ||
+                      (wizardStep === 1 && !wizardData.grind) ||
+                      (wizardStep === 2 && !wizardData.recipientType) ||
+                      (wizardStep === 3 &&
+                        (!wizardData.streetAddress ||
+                          !wizardData.city ||
+                          !wizardData.stateId ||
+                          !wizardData.postalCode ||
+                          (wizardData.recipientType === "other" &&
+                            (!wizardData.recipientName ||
+                              !wizardData.recipientPhone))))
+                    }
+                    className="flex-[1.2] h-10 bg-brand-700 hover:bg-brand-800 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+                  >
+                    Continuar
+                    <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Auth Modal */}
         <AuthModal

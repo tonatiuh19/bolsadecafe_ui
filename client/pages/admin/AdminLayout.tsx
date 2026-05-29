@@ -392,7 +392,7 @@ export default function AdminLayout() {
         ════════════════════════════════════════ */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Top bar */}
-          <header className="sticky top-0 z-30 h-[64px] flex items-center justify-between px-4 sm:px-6 bg-white/90 backdrop-blur-md border-b border-black/[0.06] shadow-sm">
+          <header className="sticky top-0 z-30 h-[64px] flex items-center justify-between px-4 sm:px-6 bg-white/90 backdrop-blur-md border-b border-black/[0.06] shadow-sm safe-top">
             {/* Left: mobile menu + breadcrumb */}
             <div className="flex items-center gap-3">
               <button

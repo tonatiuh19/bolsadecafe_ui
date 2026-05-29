@@ -335,7 +335,7 @@ function CoffeeFormDialog({
         onOpenChange(v);
       }}
     >
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-full max-w-lg sm:max-w-xl md:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Coffee className="w-5 h-5 text-primary" />
@@ -345,7 +345,7 @@ function CoffeeFormDialog({
 
         <form onSubmit={formik.handleSubmit} className="space-y-5">
           {/* Row 1: name + provider */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">
                 Nombre del Café <span className="text-destructive">*</span>
@@ -376,7 +376,7 @@ function CoffeeFormDialog({
           </div>
 
           {/* Row 2: origin + coffeeType */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-sm font-medium flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5" /> Origen / Región
@@ -398,7 +398,7 @@ function CoffeeFormDialog({
           </div>
 
           {/* Row 3: variety + process */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-sm font-medium flex items-center gap-1">
                 <Leaf className="w-3.5 h-3.5" /> Variedad
@@ -420,7 +420,7 @@ function CoffeeFormDialog({
           </div>
 
           {/* Row 4: roastLevel + altitude */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">Nivel de Tueste</Label>
               <Select
@@ -661,7 +661,7 @@ export default function AdminCoffeeCatalog() {
       {toast && (
         <div
           className={cn(
-            "fixed top-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium transition-all duration-300 animate-in slide-in-from-right-5",
+            "fixed z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium transition-all duration-300 animate-in slide-in-from-right-5 top-4 left-4 right-4 sm:top-6 sm:right-6 sm:left-auto sm:max-w-md",
             toast.type === "success"
               ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-950 dark:border-green-800 dark:text-green-200"
               : "bg-red-50 border-red-200 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200",

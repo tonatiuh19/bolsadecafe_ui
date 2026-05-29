@@ -240,6 +240,15 @@ export default function Index() {
   }, []);
 
   useEffect(() => {
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileOpen]);
+
+  useEffect(() => {
     const el = statsRef.current;
     if (!el) return;
     const obs = new IntersectionObserver(
@@ -264,7 +273,6 @@ export default function Index() {
         "Envío gratis",
         "Cancela cuando quieras",
         "Grano entero o molido",
-        "Guía de preparación",
       ],
       "500gr": [
         "Café 100% mexicano premium",
@@ -272,8 +280,6 @@ export default function Index() {
         "Envío gratis",
         "Cancela cuando quieras",
         "Grano entero o molido",
-        "Notas de cata exclusivas",
-        "Acceso a café de temporada",
       ],
       "1kg": [
         "Café 100% mexicano premium",
@@ -281,9 +287,6 @@ export default function Index() {
         "Envío gratis",
         "Cancela cuando quieras",
         "Grano entero o molido",
-        "Mix de variedades",
-        "Descuento en compras extra",
-        "Acceso prioritario",
       ],
     };
     return (
@@ -368,9 +371,7 @@ export default function Index() {
               gradient: c.gradient,
               badge: c.badge,
               popular: c.popular,
-              features: p.features?.length
-                ? p.features
-                : getFeaturesByPlanId(p.plan_id),
+              features: getFeaturesByPlanId(p.plan_id),
             };
           });
 
@@ -386,6 +387,8 @@ export default function Index() {
     window.location.reload();
   };
 
+  const solidHeader = scrolled || mobileOpen;
+
   /* ═══════════════════════════════════════════════════ */
   return (
     <div className="min-h-screen bg-white">
@@ -400,7 +403,7 @@ export default function Index() {
       />
       {/* ── NAVBAR ──────────────────────────────────────── */}
       <header
-        className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${scrolled ? "bg-white/95 backdrop-blur-md shadow-sm border-b border-neutral-100" : "bg-transparent"}`}
+        className={`fixed top-0 inset-x-0 z-50 safe-top transition-all duration-300 ${solidHeader ? "bg-white/95 backdrop-blur-md shadow-sm border-b border-neutral-100" : "bg-transparent"}`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-18">
@@ -411,7 +414,7 @@ export default function Index() {
             >
               <img
                 src={
-                  scrolled
+                  solidHeader
                     ? "https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_dark.png"
                     : "https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png"
                 }
@@ -511,19 +514,22 @@ export default function Index() {
               )}
             </div>
 
-            {/* Mobile hamburger */}
+            {/* Mobile hamburger — always tappable (was hidden on hero) */}
             <button
-              className={`md:hidden p-2 rounded-lg transition-all duration-300 ${scrolled ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+              type="button"
+              aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+              aria-expanded={mobileOpen}
+              className={`md:hidden p-2.5 -mr-1 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${
+                solidHeader
+                  ? "text-neutral-800 hover:bg-neutral-100"
+                  : "text-white hover:bg-white/10"
+              }`}
               onClick={() => setMobileOpen(!mobileOpen)}
             >
               {mobileOpen ? (
-                <X
-                  className={`h-5 w-5 ${scrolled ? "text-neutral-800" : "text-white"}`}
-                />
+                <X className="h-5 w-5" />
               ) : (
-                <Menu
-                  className={`h-5 w-5 ${scrolled ? "text-neutral-800" : "text-white"}`}
-                />
+                <Menu className="h-5 w-5" />
               )}
             </button>
           </div>
@@ -531,9 +537,9 @@ export default function Index() {
 
         {/* Mobile menu */}
         <div
-          className={`md:hidden overflow-hidden transition-all duration-300 ${mobileOpen ? "max-h-80" : "max-h-0"} bg-white border-t border-neutral-100`}
+          className={`md:hidden overflow-hidden transition-all duration-300 ${mobileOpen ? "max-h-[28rem]" : "max-h-0"} bg-white border-t border-neutral-100`}
         >
-          <div className="px-4 py-3 space-y-1">
+          <div className="px-4 py-3 space-y-1 max-h-[70vh] overflow-y-auto">
             {[
               ["inicio", "Inicio"],
               ["planes", "Planes"],
@@ -543,33 +549,70 @@ export default function Index() {
               <button
                 key={id}
                 onClick={() => scrollTo(id)}
-                className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-neutral-700 hover:bg-brand-50 hover:text-brand-800 transition-colors"
+                className="w-full text-left px-3 py-3 rounded-lg text-sm font-medium text-neutral-700 hover:bg-brand-50 hover:text-brand-800 transition-colors min-h-[44px]"
               >
                 {label}
               </button>
             ))}
             <button
-              onClick={() => navigate("/blog")}
-              className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-neutral-700 hover:bg-brand-50 hover:text-brand-800 transition-colors"
+              onClick={() => {
+                navigate("/blog");
+                setMobileOpen(false);
+              }}
+              className="w-full text-left px-3 py-3 rounded-lg text-sm font-medium text-neutral-700 hover:bg-brand-50 hover:text-brand-800 transition-colors min-h-[44px]"
             >
               Blog
             </button>
-            <div className="pt-2 pb-1 border-t border-neutral-100 flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 text-sm"
-                onClick={() => setAuthModalOpen(true)}
-              >
-                Ingresar
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => scrollTo("planes")}
-                className="flex-1 text-sm bg-brand-700 text-white"
-              >
-                Suscribirme
-              </Button>
+            <div className="pt-2 pb-1 border-t border-neutral-100 flex flex-col gap-2">
+              {isAuthenticated && user ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-sm min-h-[44px]"
+                    onClick={() => {
+                      setDashboardOpen(true);
+                      setMobileOpen(false);
+                    }}
+                  >
+                    <Package className="mr-2 h-4 w-4" />
+                    Mi Suscripción
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-sm text-red-600 border-red-200 hover:bg-red-50 min-h-[44px]"
+                    onClick={() => {
+                      handleLogout();
+                      setMobileOpen(false);
+                    }}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Cerrar Sesión
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-sm min-h-[44px]"
+                    onClick={() => {
+                      setAuthModalOpen(true);
+                      setMobileOpen(false);
+                    }}
+                  >
+                    Ingresar
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => scrollTo("planes")}
+                    className="w-full text-sm bg-brand-700 text-white min-h-[44px]"
+                  >
+                    Suscribirme
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -601,7 +644,7 @@ export default function Index() {
         <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent" />
 
         {/* Content — left-aligned, sits above bottom gradient */}
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-6 sm:px-10 pb-20 sm:pb-28 pt-32">
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-10 pb-16 sm:pb-28 pt-24 sm:pt-32">
           <div className="max-w-2xl">
             {/* Label */}
             <div className="animate-fadeUp flex items-center gap-3 mb-6">
@@ -612,7 +655,7 @@ export default function Index() {
             </div>
 
             {/* Headline */}
-            <h1 className="animate-fadeUp-d1 text-5xl sm:text-6xl lg:text-[5.5rem] font-black text-white leading-[1.0] tracking-tight mb-6">
+            <h1 className="animate-fadeUp-d1 text-4xl sm:text-6xl lg:text-[5.5rem] font-black text-white leading-[1.05] tracking-tight mb-6">
               El café
               <br />
               <span className="italic font-light text-brand-200">
@@ -633,14 +676,14 @@ export default function Index() {
               <Button
                 size="lg"
                 onClick={() => scrollTo("planes")}
-                className="w-full sm:w-auto bg-white hover:bg-neutral-100 text-brand-900 px-8 py-6 text-sm font-bold rounded-xl shadow-2xl tracking-wide"
+                className="w-full sm:w-auto bg-white hover:bg-neutral-100 text-brand-900 px-6 sm:px-8 py-5 sm:py-6 text-sm font-bold rounded-xl shadow-2xl tracking-wide min-h-[48px]"
               >
                 Ver Planes de Suscripción
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <button
                 onClick={() => scrollTo("como-funciona")}
-                className="w-full sm:w-auto flex items-center justify-center sm:justify-start gap-2 border border-white/25 hover:border-white/50 text-white/80 hover:text-white px-8 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 backdrop-blur-sm"
+                className="w-full sm:w-auto flex items-center justify-center sm:justify-start gap-2 border border-white/25 hover:border-white/50 text-white/80 hover:text-white px-6 sm:px-8 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 backdrop-blur-sm min-h-[48px]"
               >
                 Cómo funciona
               </button>
@@ -805,7 +848,7 @@ export default function Index() {
           </div>
 
           {/* Cards — always rendered using hardcoded fallback, no loading gate */}
-          <div className="grid lg:grid-cols-3 gap-5 lg:gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-6">
             {displayPlans.map((plan, i) => {
               const Icon = plan.icon;
               const isPopular = plan.popular;
@@ -825,7 +868,7 @@ export default function Index() {
                     <div className="h-[3px] w-full bg-gradient-to-r from-brand-400 via-brand-500 to-brand-400" />
                   )}
 
-                  <div className="flex-1 flex flex-col p-7">
+                  <div className="flex-1 flex flex-col p-5 sm:p-7">
                     {/* Icon + badge row */}
                     <div className="flex items-center justify-between mb-7">
                       <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center">
@@ -855,7 +898,7 @@ export default function Index() {
                     {/* Price block */}
                     <div className="mb-7 pb-7 border-b border-neutral-100">
                       <div className="flex items-baseline gap-1.5">
-                        <span className="text-5xl font-black tracking-tight text-neutral-900">
+                        <span className="text-4xl sm:text-5xl font-black tracking-tight text-neutral-900">
                           ${plan.price}
                         </span>
                         <span className="text-sm text-neutral-400">
@@ -1160,7 +1203,7 @@ export default function Index() {
           <Button
             size="lg"
             onClick={() => scrollTo("planes")}
-            className="bg-white text-brand-900 hover:bg-brand-50 px-10 py-6 text-base font-bold rounded-xl shadow-2xl"
+            className="w-full sm:w-auto bg-white text-brand-900 hover:bg-brand-50 px-8 sm:px-10 py-5 sm:py-6 text-base font-bold rounded-xl shadow-2xl min-h-[48px]"
           >
             Comenzar Mi Suscripción
             <ArrowRight className="ml-2 h-5 w-5" />
@@ -1185,10 +1228,21 @@ export default function Index() {
                 puerta cada mes.
               </p>
               <div className="flex gap-3">
-                {[Facebook, Instagram].map((Icon, i) => (
+                {[
+                  {
+                    href: "https://www.instagram.com/bolsadecafe_oficial/",
+                    Icon: Instagram,
+                  },
+                  {
+                    href: "https://www.facebook.com/profile.php?id=61566415721215",
+                    Icon: Facebook,
+                  },
+                ].map(({ href, Icon }, i) => (
                   <a
                     key={i}
-                    href="#"
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="w-8 h-8 rounded-lg bg-neutral-800 hover:bg-brand-700 flex items-center justify-center transition-colors"
                   >
                     <Icon className="h-4 w-4 text-neutral-400 hover:text-white" />
@@ -1265,17 +1319,17 @@ export default function Index() {
                 Contacto
               </h4>
               <ul className="space-y-3 text-sm text-neutral-400">
-                <li className="flex items-center gap-2.5">
-                  <Mail className="h-4 w-4 flex-shrink-0 text-brand-500" />
-                  hola@bolsadecafe.mx
+                <li className="flex items-start gap-2.5">
+                  <Mail className="h-4 w-4 flex-shrink-0 text-brand-500 mt-0.5" />
+                  <span className="break-all">dihola@bolsadecafe.com</span>
                 </li>
                 <li className="flex items-center gap-2.5">
                   <Phone className="h-4 w-4 flex-shrink-0 text-brand-500" />
-                  +52 55 1234 5678
+                  +52 385 108 3785
                 </li>
                 <li className="flex items-center gap-2.5">
                   <MapPin className="h-4 w-4 flex-shrink-0 text-brand-500" />
-                  Ciudad de México, México
+                  Guadalajara, Jalisco
                 </li>
               </ul>
             </div>

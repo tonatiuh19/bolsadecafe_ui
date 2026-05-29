@@ -434,27 +434,29 @@ export default function HelpCenter() {
       />
 
       {/* ── Nav ─────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-neutral-100 shadow-sm shadow-neutral-900/5">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-neutral-100 shadow-sm shadow-neutral-900/5 safe-top">
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
           <Link
             to="/"
-            className="flex items-center gap-2 text-brand-700 hover:text-brand-800 transition-colors"
+            className="flex items-center gap-1.5 text-brand-700 hover:text-brand-800 transition-colors min-h-[44px] min-w-0 flex-shrink"
           >
-            <ChevronLeft className="h-4 w-4" />
-            <span className="text-sm font-medium">Volver al inicio</span>
+            <ChevronLeft className="h-4 w-4 flex-shrink-0" />
+            <span className="text-sm font-medium truncate sm:inline">
+              Volver
+            </span>
           </Link>
           <img
             src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_dark.png"
             alt="Bolsadecafé"
-            className="h-7"
+            className="h-7 w-auto flex-shrink-0"
           />
-          <div className="w-24" />
+          <div className="w-[72px] sm:w-24 flex-shrink-0" aria-hidden />
         </div>
       </header>
 
       <main className="min-h-screen bg-gradient-to-b from-neutral-50 to-white">
         {/* ── Hero ──────────────────────────────────────────────────────── */}
-        <section className="bg-gradient-to-br from-brand-800 via-brand-700 to-brand-600 text-white px-4 py-16 sm:py-24">
+        <section className="bg-gradient-to-br from-brand-800 via-brand-700 to-brand-600 text-white px-4 py-10 sm:py-16 md:py-24">
           <div className="max-w-3xl mx-auto text-center">
             <Badge className="mb-6 bg-white/10 text-white border-white/20 hover:bg-white/15 text-xs uppercase tracking-widest">
               Centro de Ayuda
@@ -488,7 +490,7 @@ export default function HelpCenter() {
             </div>
 
             {/* Quick stats */}
-            <div className="flex items-center justify-center gap-8 mt-10 text-sm text-brand-200">
+            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 mt-8 sm:mt-10 text-sm text-brand-200">
               <span className="flex items-center gap-1.5">
                 <Clock className="h-4 w-4" />
                 Respuesta en &lt;24h
@@ -526,7 +528,7 @@ export default function HelpCenter() {
                   ))}
                 </div>
               ) : (
-                <div className="p-8 rounded-2xl border border-neutral-100 bg-neutral-50 text-center">
+                <div className="p-5 sm:p-8 rounded-2xl border border-neutral-100 bg-neutral-50 text-center">
                   <HelpCircle className="h-10 w-10 text-neutral-300 mx-auto mb-3" />
                   <p className="text-neutral-500 text-sm mb-4">
                     No encontramos respuesta a "{searchQuery}". ¿Quieres

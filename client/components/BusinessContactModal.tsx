@@ -98,7 +98,7 @@ export default function BusinessContactModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100%-2rem)] max-w-lg md:max-w-2xl max-h-[min(90dvh,90vh)] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-2xl flex items-center gap-2">
             <Building2 className="h-6 w-6 text-brand-600" />

@@ -86,7 +86,7 @@ export default function AdminSettings() {
       </div>
 
       {/* Profile summary */}
-      <div className="bg-gradient-to-r from-primary/5 to-primary/10 rounded-2xl border border-primary/20 p-5 flex items-center gap-4">
+      <div className="bg-gradient-to-r from-primary/5 to-primary/10 rounded-2xl border border-primary/20 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
         <div className="w-14 h-14 rounded-2xl bg-primary text-white font-bold text-xl flex items-center justify-center flex-shrink-0 shadow-lg">
           {initials}
         </div>

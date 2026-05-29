@@ -167,7 +167,7 @@ export default function AdminBlog() {
 
       {/* Filter tabs + search */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex gap-1 p-1 rounded-lg bg-muted/50 border border-border">
+        <div className="flex gap-1 p-1 rounded-lg bg-muted/50 border border-border overflow-x-auto">
           {FILTER_TABS.map((tab) => (
             <button
               key={tab.value}

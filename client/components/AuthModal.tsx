@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ChevronLeft,
   Sparkles,
+  KeyRound,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -100,7 +101,10 @@ function OtpInput({
   };
 
   return (
-    <div className="flex gap-2 justify-center" onPaste={handlePaste}>
+    <div
+      className="flex gap-1.5 sm:gap-2 justify-center px-1 sm:px-0"
+      onPaste={handlePaste}
+    >
       {digits.map((d, i) => (
         <input
           key={i}
@@ -115,7 +119,7 @@ function OtpInput({
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKey(i, e)}
           onFocus={(e) => e.target.select()}
-          className={`w-11 h-14 text-center text-xl font-bold rounded-xl border-2 outline-none transition-all duration-200
+          className={`w-9 h-12 sm:w-11 sm:h-14 text-center text-lg sm:text-xl font-bold rounded-xl border-2 outline-none transition-all duration-200
             ${
               d
                 ? "border-brand-600 bg-brand-50 text-brand-800 shadow-sm"
@@ -220,14 +224,14 @@ export default function AuthModal({
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent
-        className="sm:max-w-[420px] p-0 overflow-hidden rounded-2xl border-0 shadow-2xl gap-0"
+        className="sm:max-w-[420px] p-0 overflow-hidden rounded-2xl border-0 shadow-2xl gap-0 max-h-[min(92dvh,92vh)]"
         aria-describedby={undefined}
       >
         <VisuallyHidden.Root>
           <DialogTitle>{stepMeta.title}</DialogTitle>
         </VisuallyHidden.Root>
         {/* ── Top accent band ── */}
-        <div className="relative bg-gradient-to-br from-neutral-100 via-brand-50 to-white px-8 pt-8 pb-10 overflow-hidden border-b border-neutral-100">
+        <div className="relative bg-gradient-to-br from-neutral-100 via-brand-50 to-white px-5 sm:px-8 pt-6 sm:pt-8 pb-8 sm:pb-10 overflow-hidden border-b border-neutral-100">
           {/* subtle brand circle */}
           <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-brand-100/40" />
           <div className="absolute -bottom-8 -left-8 w-28 h-28 rounded-full bg-brand-50/60" />
@@ -264,7 +268,7 @@ export default function AuthModal({
         </div>
 
         {/* ── Form card ── */}
-        <div className="bg-white px-6 pt-6 pb-6 space-y-5">
+        <div className="bg-white px-5 sm:px-6 pt-5 sm:pt-6 pb-6 space-y-5 overflow-y-auto">
           {/* ── STEP: email ── */}
           {step === "email" && (
             <div className="space-y-4">
@@ -302,15 +306,40 @@ export default function AuthModal({
                   </>
                 ) : (
                   <>
-                    <span>Enviar Código</span>
+                    <span>Continuar</span>
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </>
                 )}
               </Button>
 
+              {/* passwordless badge */}
+              <div className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-brand-50 to-indigo-50 border border-brand-100">
+                <KeyRound className="h-3.5 w-3.5 text-brand-600 flex-shrink-0" />
+                <span className="text-xs font-medium text-brand-700">
+                  Sin contraseñas — acceso seguro con código de un solo uso
+                </span>
+              </div>
+
               <p className="text-xs text-neutral-400 text-center leading-relaxed">
-                Te enviaremos un código de 6 dígitos para verificar tu
-                identidad.
+                Al continuar, aceptas nuestros{" "}
+                <a
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-600 hover:text-brand-700 underline underline-offset-2 transition-colors"
+                >
+                  Términos y Condiciones
+                </a>{" "}
+                y nuestra{" "}
+                <a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-600 hover:text-brand-700 underline underline-offset-2 transition-colors"
+                >
+                  Política de Privacidad
+                </a>
+                .
               </p>
             </div>
           )}
@@ -460,6 +489,28 @@ export default function AuthModal({
                   </>
                 )}
               </Button>
+
+              <p className="text-xs text-neutral-400 text-center leading-relaxed">
+                Al crear tu cuenta, aceptas nuestros{" "}
+                <a
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-600 hover:text-brand-700 underline underline-offset-2 transition-colors"
+                >
+                  Términos y Condiciones
+                </a>{" "}
+                y nuestra{" "}
+                <a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-600 hover:text-brand-700 underline underline-offset-2 transition-colors"
+                >
+                  Política de Privacidad
+                </a>
+                .
+              </p>
             </div>
           )}
         </div>

@@ -58,7 +58,7 @@ export default function BlogList() {
 
       <div className="min-h-screen bg-white dark:bg-[#07101f]">
         {/* ── Nav ────────────────────────────────────────────────────── */}
-        <nav className="sticky top-0 z-50 bg-white/80 dark:bg-[#07101f]/90 backdrop-blur-md border-b border-stone-200 dark:border-white/10">
+        <nav className="sticky top-0 z-50 bg-white/80 dark:bg-[#07101f]/90 backdrop-blur-md border-b border-stone-200 dark:border-white/10 safe-top">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
             <button
               onClick={() => navigate("/")}
@@ -157,7 +157,7 @@ export default function BlogList() {
                     <Coffee className="w-16 h-16 text-amber-400/50" />
                   </div>
                 )}
-                <div className="p-6 sm:p-8 flex flex-col justify-center gap-4">
+                <div className="p-4 sm:p-6 md:p-8 flex flex-col justify-center gap-3 sm:gap-4">
                   <div className="flex items-center gap-2 flex-wrap">
                     {featuredPost.category_name && (
                       <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-700/40 text-xs">
@@ -202,7 +202,7 @@ export default function BlogList() {
 
           {/* Posts grid */}
           {!loading && restPosts.length > 0 && (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {restPosts.map((post) => (
                 <article
                   key={post.id}

@@ -318,7 +318,7 @@ function BlockEditor({
             onChange={(url) => onChange({ ...d, url })}
             uploadId={`${postUploadId}_blk_${index}`}
           />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {field("alt", "Alt text", false, "Descripción de la imagen")}
             {field(
               "caption",

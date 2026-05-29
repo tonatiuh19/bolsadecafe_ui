@@ -2,10 +2,9 @@ import "dotenv/config";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express, { type RequestHandler } from "express";
 import cors from "cors";
-import mysql from "mysql2/promise";
+import mysql, { type Pool } from "mysql2/promise";
 import jwt from "jsonwebtoken";
 import { Resend } from "resend";
-import crypto from "crypto";
 import Stripe from "stripe";
 import bcrypt from "bcryptjs";
 
@@ -31,26 +30,186 @@ const pool = mysql.createPool({
 });
 
 // =====================================================
-// EMAIL HELPER
+// EMAIL — templates & send helpers (inline for Vercel serverless)
 // =====================================================
 
-/** Shared Resend client for all transactional emails */
-function createResendClient() {
-  return new Resend(process.env.RESEND_API_KEY);
+/** Map Stripe decline codes to user-friendly Spanish messages */
+function humanizeStripeDecline(message?: string | null): string {
+  if (!message) return "Tu banco rechazó el pago. Intenta con otra tarjeta o contacta a tu banco.";
+  const lower = message.toLowerCase();
+  if (lower.includes("insufficient_funds") || lower.includes("insufficient funds")) {
+    return "Fondos insuficientes en la tarjeta.";
+  }
+  if (lower.includes("expired_card") || lower.includes("expired")) {
+    return "La tarjeta está vencida.";
+  }
+  if (lower.includes("incorrect_cvc") || lower.includes("cvc")) {
+    return "El código de seguridad (CVC) es incorrecto.";
+  }
+  if (lower.includes("card_declined") || lower.includes("declined")) {
+    return "Tu banco rechazó el cargo. Verifica los datos o usa otra tarjeta.";
+  }
+  if (lower.includes("authentication_required") || lower.includes("3d secure")) {
+    return "Tu banco requiere autenticación adicional (3D Secure).";
+  }
+  return message;
 }
 
-/** Default "from" address for all outgoing emails */
-function getFromAddress() {
-  return process.env.SMTP_FROM || "Bolsa de Café <hola@bolsadecafe.com>";
-}
 
 /**
- * Send subscription confirmation email
+ * Bolsa de Café — transactional email HTML templates.
+ * Brand palette aligned with tailwind.config.ts (brand-*).
  */
-async function sendSubscriptionConfirmationEmail(
-  userEmail: string,
+
+const EMAIL_BRAND = {
+  /** brand-950 */
+  navyDark: "#152a63",
+  /** brand-900 */
+  navy: "#1a3578",
+  /** brand-800 */
+  navyMid: "#1d3c89",
+  /** brand-600 */
+  navySoft: "#4a5d8a",
+  /** brand-100 */
+  tint: "#eef1f7",
+  /** brand-50 */
+  tintLight: "#f7f8fc",
+  /** brand-200 */
+  border: "#cdd2df",
+  text: "#2a2a2a",
+  textMuted: "#6d6d6d",
+  textLight: "#888888",
+  white: "#ffffff",
+  bgPage: "#f2f2f2",
+  bgFooter: "#f8f8f8",
+  danger: "#b91c1c",
+  dangerBg: "#fef2f2",
+  dangerBorder: "#fecaca",
+  warning: "#92400e",
+  warningBg: "#fffbeb",
+  warningBorder: "#fcd34d",
+} as const;
+
+const LOGO_URL =
+  "https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png";
+const SUPPORT_EMAIL = "dihola@bolsadecafe.com";
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function frontendUrl(): string {
+  return process.env.FRONTEND_URL || "http://localhost:5173";
+}
+
+interface EmailLayoutOptions {
+  title: string;
+  preheader?: string;
+  headerTitle: string;
+  headerSubtitle?: string;
+  badge?: string;
+  bodyHtml: string;
+  cta?: { label: string; href: string };
+}
+
+/** Shared responsive email shell */
+function emailLayout(opts: EmailLayoutOptions): string {
+  const preheader = opts.preheader
+    ? `<span style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(opts.preheader)}</span>`
+    : "";
+
+  const badge = opts.badge
+    ? `<div style="display:inline-block;margin-top:12px;padding:6px 14px;border-radius:100px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);">
+         <span style="font-size:12px;color:rgba(255,255,255,0.92);font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">${escapeHtml(opts.badge)}</span>
+       </div>`
+    : "";
+
+  const cta = opts.cta
+    ? `<tr>
+         <td style="padding:0 32px 36px;text-align:center;">
+           <a href="${escapeHtml(opts.cta.href)}" style="display:inline-block;background:linear-gradient(135deg,${EMAIL_BRAND.navy} 0%,${EMAIL_BRAND.navyMid} 100%);color:${EMAIL_BRAND.white};text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;letter-spacing:-0.01em;">${escapeHtml(opts.cta.label)}</a>
+         </td>
+       </tr>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(opts.title)}</title>
+</head>
+<body style="margin:0;padding:0;background:${EMAIL_BRAND.bgPage};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  ${preheader}
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
+    <tr><td>
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:${EMAIL_BRAND.white};border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(21,42,99,0.08);border:1px solid ${EMAIL_BRAND.border};">
+        <tr>
+          <td style="background:linear-gradient(135deg,${EMAIL_BRAND.navyDark} 0%,${EMAIL_BRAND.navyMid} 100%);padding:32px 28px;text-align:center;">
+            <img src="${LOGO_URL}" alt="Bolsadecafé" width="160" style="height:auto;max-height:44px;display:block;margin:0 auto;" />
+            <h1 style="color:${EMAIL_BRAND.white};margin:16px 0 0;font-size:24px;font-weight:800;letter-spacing:-0.02em;line-height:1.25;">${escapeHtml(opts.headerTitle)}</h1>
+            ${opts.headerSubtitle ? `<p style="color:rgba(255,255,255,0.82);margin:8px 0 0;font-size:14px;line-height:1.5;">${escapeHtml(opts.headerSubtitle)}</p>` : ""}
+            ${badge}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 28px 24px;color:${EMAIL_BRAND.text};font-size:15px;line-height:1.65;">
+            ${opts.bodyHtml}
+          </td>
+        </tr>
+        ${cta}
+        <tr>
+          <td style="background:${EMAIL_BRAND.bgFooter};padding:24px 28px;text-align:center;border-top:1px solid ${EMAIL_BRAND.border};">
+            <p style="margin:0 0 6px;color:${EMAIL_BRAND.textMuted};font-size:13px;">¿Necesitas ayuda?</p>
+            <p style="margin:0;font-size:13px;"><a href="mailto:${SUPPORT_EMAIL}" style="color:${EMAIL_BRAND.navyMid};text-decoration:none;font-weight:600;">${SUPPORT_EMAIL}</a></p>
+            <p style="margin:14px 0 0;color:${EMAIL_BRAND.textLight};font-size:11px;">© ${new Date().getFullYear()} Bolsa de Café. Todos los derechos reservados.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function infoCard(title: string, rows: { label: string; value: string }[]): string {
+  const rowHtml = rows
+    .map(
+      (r, i) => `<tr>
+        <td style="color:${EMAIL_BRAND.textMuted};font-size:13px;padding:10px 0;${i < rows.length - 1 ? `border-bottom:1px solid ${EMAIL_BRAND.border};` : ""}">${escapeHtml(r.label)}</td>
+        <td style="color:${EMAIL_BRAND.text};font-size:13px;font-weight:600;text-align:right;padding:10px 0;${i < rows.length - 1 ? `border-bottom:1px solid ${EMAIL_BRAND.border};` : ""}">${r.value}</td>
+      </tr>`,
+    )
+    .join("");
+
+  return `<div style="background:${EMAIL_BRAND.tintLight};border:1px solid ${EMAIL_BRAND.border};border-radius:12px;padding:20px;margin:20px 0;">
+    <h2 style="color:${EMAIL_BRAND.navy};margin:0 0 14px;font-size:16px;font-weight:700;">${escapeHtml(title)}</h2>
+    <table width="100%" cellpadding="0" cellspacing="0">${rowHtml}</table>
+  </div>`;
+}
+
+function bulletList(title: string, items: string[]): string {
+  const lis = items
+    .map(
+      (item) =>
+        `<li style="margin:0 0 8px;color:${EMAIL_BRAND.navySoft};font-size:14px;line-height:1.5;">${escapeHtml(item)}</li>`,
+    )
+    .join("");
+  return `<div style="background:${EMAIL_BRAND.tint};border:1px solid ${EMAIL_BRAND.border};border-radius:12px;padding:18px 20px;margin:20px 0;">
+    <h3 style="color:${EMAIL_BRAND.navy};margin:0 0 10px;font-size:14px;font-weight:700;">${escapeHtml(title)}</h3>
+    <ul style="margin:0;padding:0 0 0 18px;">${lis}</ul>
+  </div>`;
+}
+
+// ─── Template builders ───────────────────────────────────────────────────────
+
+function subscriptionConfirmationEmail(
   userName: string,
-  subscriptionDetails: {
+  details: {
     planName: string;
     weight: string;
     price: string;
@@ -66,380 +225,437 @@ async function sendSubscriptionConfirmationEmail(
       phone?: string;
     };
   },
-): Promise<void> {
-  try {
-    if (!process.env.RESEND_API_KEY) {
-      console.error(
-        "❌ RESEND_API_KEY not configured — skipping confirmation email",
-      );
-      return;
-    }
+): { subject: string; html: string } {
+  const addr = details.address;
+  const addressHtml = `${escapeHtml(addr.full_name)}<br>
+    ${escapeHtml(addr.street_address)}${addr.street_address_2 ? `<br>${escapeHtml(addr.street_address_2)}` : ""}<br>
+    ${escapeHtml(addr.city)}, ${escapeHtml(addr.state)} ${escapeHtml(addr.postal_code)}${addr.phone ? `<br>Tel: ${escapeHtml(addr.phone)}` : ""}`;
 
-    const htmlTemplate = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>¡Suscripción Confirmada!</title>
-    </head>
-    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #fef9f5 0%, #fff 100%); padding: 40px 20px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-        <!-- Header -->
-        <tr>
-          <td style="background: linear-gradient(135deg, #152a63 0%, #1d3c89 100%); padding: 36px 30px; text-align: center;">
-            <img src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png" alt="Bolsadecafé" style="height: 44px; width: auto; display: block; margin: 0 auto 14px auto;" />
-            <h1 style="color: white; margin: 0; font-size: 26px; font-weight: 700;">¡Suscripción Confirmada!</h1>
-            <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0 0; font-size: 15px;">Tu café está en camino</p>
-          </td>
-        </tr>
+  const body = `
+    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:${EMAIL_BRAND.navy};">Hola ${escapeHtml(userName)},</p>
+    <p style="margin:0 0 8px;color:${EMAIL_BRAND.textMuted};">Gracias por suscribirte a <strong style="color:${EMAIL_BRAND.text};">Bolsa de Café</strong>. Tu suscripción está activa y pronto recibirás tu primer envío de café de especialidad.</p>
+    ${infoCard("Detalles de tu suscripción", [
+      { label: "Plan", value: escapeHtml(details.planName) },
+      { label: "Cantidad", value: escapeHtml(details.weight) },
+      { label: "Molido", value: escapeHtml(details.grindType) },
+      { label: "Precio mensual", value: `$${escapeHtml(details.price)} MXN` },
+      { label: "Próxima entrega", value: escapeHtml(details.nextDelivery) },
+    ])}
+    <div style="background:${EMAIL_BRAND.bgFooter};border:1px solid ${EMAIL_BRAND.border};border-radius:12px;padding:18px 20px;margin:20px 0;">
+      <h3 style="color:${EMAIL_BRAND.text};margin:0 0 10px;font-size:15px;font-weight:700;">Dirección de entrega</h3>
+      <p style="margin:0;color:${EMAIL_BRAND.textMuted};font-size:14px;line-height:1.6;">${addressHtml}</p>
+    </div>
+    ${bulletList("Incluido en tu plan", [
+      "Café 100% mexicano de especialidad",
+      "Envío gratis en toda la República",
+      "Sin compromiso — cancela cuando quieras",
+      "Frescura garantizada — tostado artesanal",
+    ])}`;
 
-        <!-- Welcome Message -->
-        <tr>
-          <td style="padding: 40px 30px 20px;">
-            <p style="font-size: 18px; color: #1a1a1a; margin: 0 0 10px 0; line-height: 1.6;">¡Hola ${userName}! 👋</p>
-            <p style="font-size: 16px; color: #666; margin: 0; line-height: 1.6;">Gracias por suscribirte a <strong>Bolsa de Café</strong>. Tu suscripción ha sido activada exitosamente y pronto recibirás tu primer envío de café de especialidad.</p>
-          </td>
-        </tr>
-
-        <!-- Subscription Details -->
-        <tr>
-          <td style="padding: 0 30px 20px;">
-            <div style="background: linear-gradient(135deg, #f7f8fc 0%, #eef1f8 100%); border: 2px solid #c8d0e8; border-radius: 12px; padding: 24px; margin-bottom: 20px;">
-              <h2 style="color: #1a3578; margin: 0 0 20px 0; font-size: 20px; font-weight: 700;">📦 Detalles de tu Suscripción</h2>
-              
-              <table width="100%" cellpadding="8" cellspacing="0">
-                <tr>
-                  <td style="color: #666; font-size: 14px; padding: 8px 0; border-bottom: 1px solid #c8d0e8;">Plan:</td>
-                  <td style="color: #1a1a1a; font-size: 14px; font-weight: 600; text-align: right; padding: 8px 0; border-bottom: 1px solid #c8d0e8;">${subscriptionDetails.planName}</td>
-                </tr>
-                <tr>
-                  <td style="color: #666; font-size: 14px; padding: 8px 0; border-bottom: 1px solid #c8d0e8;">Cantidad:</td>
-                  <td style="color: #1a1a1a; font-size: 14px; font-weight: 600; text-align: right; padding: 8px 0; border-bottom: 1px solid #c8d0e8;">${subscriptionDetails.weight}</td>
-                </tr>
-                <tr>
-                  <td style="color: #666; font-size: 14px; padding: 8px 0; border-bottom: 1px solid #c8d0e8;">Molido:</td>
-                  <td style="color: #1a1a1a; font-size: 14px; font-weight: 600; text-align: right; padding: 8px 0; border-bottom: 1px solid #c8d0e8;">${subscriptionDetails.grindType}</td>
-                </tr>
-                <tr>
-                  <td style="color: #666; font-size: 14px; padding: 8px 0; border-bottom: 1px solid #c8d0e8;">Precio Mensual:</td>
-                  <td style="color: #1a3578; font-size: 18px; font-weight: 700; text-align: right; padding: 8px 0; border-bottom: 1px solid #c8d0e8;">$${subscriptionDetails.price} MXN</td>
-                </tr>
-                <tr>
-                  <td style="color: #666; font-size: 14px; padding: 8px 0;">Próxima entrega:</td>
-                  <td style="color: #1a1a1a; font-size: 14px; font-weight: 600; text-align: right; padding: 8px 0;">${subscriptionDetails.nextDelivery}</td>
-                </tr>
-              </table>
-            </div>
-
-            <!-- Delivery Address -->
-            <div style="background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 12px; padding: 24px;">
-              <h2 style="color: #1a1a1a; margin: 0 0 16px 0; font-size: 18px; font-weight: 700;">🚚 Dirección de Entrega</h2>
-              <p style="margin: 0; color: #1a1a1a; font-size: 15px; line-height: 1.6; font-weight: 600;">${subscriptionDetails.address.full_name}</p>
-              <p style="margin: 8px 0 0 0; color: #666; font-size: 14px; line-height: 1.6;">
-                ${subscriptionDetails.address.street_address}<br>
-                ${subscriptionDetails.address.street_address_2 ? subscriptionDetails.address.street_address_2 + "<br>" : ""}
-                ${subscriptionDetails.address.city}, ${subscriptionDetails.address.state} ${subscriptionDetails.address.postal_code}<br>
-                ${subscriptionDetails.address.phone ? "Tel: " + subscriptionDetails.address.phone : ""}
-              </p>
-            </div>
-          </td>
-        </tr>
-
-        <!-- Benefits -->
-        <tr>
-          <td style="padding: 0 30px 30px;">
-            <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #86efac; border-radius: 12px; padding: 20px;">
-              <h3 style="color: #166534; margin: 0 0 12px 0; font-size: 16px; font-weight: 700;">✓ Beneficios Incluidos</h3>
-              <ul style="margin: 0; padding: 0 0 0 20px; color: #15803d; font-size: 14px; line-height: 2;">
-                <li>Café 100% mexicano de especialidad</li>
-                <li>Envío gratis en toda la República</li>
-                <li>Sin compromiso - cancela cuando quieras</li>
-                <li>Frescura garantizada - tostado artesanal</li>
-              </ul>
-            </div>
-          </td>
-        </tr>
-
-        <!-- CTA -->
-        <tr>
-          <td style="padding: 0 30px 40px; text-align: center;">
-            <a href="${process.env.FRONTEND_URL || "http://localhost:5173"}" style="display: inline-block; background: linear-gradient(135deg, #1a3578 0%, #1d3c89 100%); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(26, 53, 120, 0.25);">Ver Mi Cuenta</a>
-          </td>
-        </tr>
-
-        <!-- Footer -->
-        <tr>
-          <td style="background: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-            <p style="margin: 0 0 8px 0; color: #666; font-size: 14px;">¿Tienes preguntas? Estamos aquí para ayudarte</p>
-            <p style="margin: 0; color: #1a3578; font-size: 14px; font-weight: 600;">
-              <a href="mailto:hola@bolsadecafe.com" style="color: #1a3578; text-decoration: none;">hola@bolsadecafe.com</a>
-            </p>
-            <p style="margin: 16px 0 0 0; color: #999; font-size: 12px;">© 2026 Bolsa de Café. Todos los derechos reservados.</p>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-    `;
-
-    const resend = createResendClient();
-    await resend.emails.send({
-      from: getFromAddress(),
-      to: userEmail,
-      subject: "☕ ¡Tu suscripción a Bolsa de Café está confirmada!",
-      html: htmlTemplate,
-    });
-
-    console.log(`✅ Subscription confirmation email sent to ${userEmail}`);
-  } catch (error) {
-    console.error("Error sending subscription confirmation email:", error);
-    // Don't throw error - email failure shouldn't block subscription creation
-  }
+  return {
+    subject: "Tu suscripción a Bolsa de Café está confirmada",
+    html: emailLayout({
+      title: "Suscripción confirmada",
+      preheader: "Tu café está en camino. Revisa los detalles de tu suscripción.",
+      headerTitle: "Suscripción confirmada",
+      headerSubtitle: "Tu café está en camino",
+      bodyHtml: body,
+      cta: { label: "Ver mi cuenta", href: frontendUrl() },
+    }),
+  };
 }
 
-/**
- * Send new-order notification to all active admins
- */
-async function sendAdminNewOrderNotification(orderDetails: {
+function adminNewOrderEmail(details: {
   orderNumber: string;
   userName: string;
   userEmail: string;
   planName: string;
   amount: number;
-  subscriptionId: number;
-}): Promise<void> {
+}): { subject: string; html: string } {
+  const adminUrl = `${frontendUrl()}/admin/subscriptions`;
+  const body = `
+    <p style="margin:0 0 6px;font-size:12px;color:${EMAIL_BRAND.textLight};text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Número de orden</p>
+    <p style="margin:0 0 20px;font-size:22px;font-weight:800;color:${EMAIL_BRAND.text};letter-spacing:-0.02em;">${escapeHtml(details.orderNumber)}</p>
+    ${infoCard("Resumen", [
+      { label: "Cliente", value: `${escapeHtml(details.userName)}<br><span style="font-weight:400;color:${EMAIL_BRAND.textMuted};">${escapeHtml(details.userEmail)}</span>` },
+      { label: "Plan", value: escapeHtml(details.planName) },
+      { label: "Monto", value: `$${details.amount.toFixed(2)} MXN` },
+    ])}
+    <p style="margin:24px 0 0;text-align:center;"><a href="${adminUrl}" style="display:inline-block;background:linear-gradient(135deg,${EMAIL_BRAND.navyDark},${EMAIL_BRAND.navyMid});color:${EMAIL_BRAND.white};text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;">Ver en el panel</a></p>`;
+
+  return {
+    subject: `Nueva orden ${details.orderNumber} — $${details.amount.toFixed(2)} MXN`,
+    html: emailLayout({
+      title: "Nueva orden",
+      preheader: `Nueva orden ${details.orderNumber} de ${details.userName}`,
+      headerTitle: "Nueva orden creada",
+      headerSubtitle: details.orderNumber,
+      badge: "Admin",
+      bodyHtml: body,
+    }),
+  };
+}
+
+function verificationEmail(
+  firstName: string,
+  code: number,
+): { subject: string; html: string } {
+  const body = `
+    <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:${EMAIL_BRAND.navy};">Hola ${escapeHtml(firstName)},</p>
+    <p style="margin:0 0 20px;color:${EMAIL_BRAND.textMuted};">Tu código de verificación es:</p>
+    <div style="font-size:36px;font-weight:800;color:${EMAIL_BRAND.navy};text-align:center;padding:24px 16px;background:${EMAIL_BRAND.tintLight};border-radius:12px;border:2px solid ${EMAIL_BRAND.border};letter-spacing:8px;margin:0 0 20px;">${code}</div>
+    <div style="background:${EMAIL_BRAND.tint};border-left:4px solid ${EMAIL_BRAND.navyMid};padding:14px 16px;border-radius:0 8px 8px 0;margin:0 0 16px;">
+      <p style="margin:0;color:${EMAIL_BRAND.textMuted};font-size:13px;"><strong style="color:${EMAIL_BRAND.text};">Validez:</strong> este código expira en <strong>15 minutos</strong>.</p>
+    </div>
+    <p style="margin:0;color:${EMAIL_BRAND.textLight};font-size:13px;">Si no solicitaste este código, puedes ignorar este correo.</p>`;
+
+  return {
+    subject: `${code} es tu código de verificación`,
+    html: emailLayout({
+      title: "Código de verificación",
+      preheader: `Tu código de verificación es ${code}`,
+      headerTitle: "Código de verificación",
+      headerSubtitle: "Acceso seguro sin contraseña",
+      bodyHtml: body,
+    }),
+  };
+}
+
+function shippingEmail(
+  userName: string,
+  order: {
+    orderNumber: string;
+    trackingNumber: string;
+    shipmentProvider: string;
+    estimatedDelivery: string;
+    planName: string;
+    weight: string;
+    coffeeName?: string;
+    address: {
+      full_name: string;
+      street_address: string;
+      street_address_2?: string;
+      city: string;
+      state: string;
+      postal_code: string;
+    };
+  },
+): { subject: string; html: string } {
+  const rows = [
+    { label: "Paquetería", value: escapeHtml(order.shipmentProvider) },
+    { label: "Rastreo", value: escapeHtml(order.trackingNumber) },
+    { label: "Entrega estimada", value: escapeHtml(order.estimatedDelivery) },
+    { label: "Producto", value: `${escapeHtml(order.planName)} (${escapeHtml(order.weight)})` },
+  ];
+  if (order.coffeeName) {
+    rows.push({ label: "Café del envío", value: escapeHtml(order.coffeeName) });
+  }
+
+  const addr = order.address;
+  const body = `
+    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:${EMAIL_BRAND.navy};">Hola ${escapeHtml(userName)},</p>
+    <p style="margin:0 0 8px;color:${EMAIL_BRAND.textMuted};">Tu pedido ha sido enviado y está en camino. Aquí están los detalles:</p>
+    ${infoCard("Información de envío", rows)}
+    <div style="background:${EMAIL_BRAND.bgFooter};border:1px solid ${EMAIL_BRAND.border};border-radius:12px;padding:18px;margin:20px 0;">
+      <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:${EMAIL_BRAND.text};">Dirección de entrega</h3>
+      <p style="margin:0;color:${EMAIL_BRAND.textMuted};font-size:14px;line-height:1.6;">
+        ${escapeHtml(addr.full_name)}<br>
+        ${escapeHtml(addr.street_address)}${addr.street_address_2 ? `, ${escapeHtml(addr.street_address_2)}` : ""}<br>
+        ${escapeHtml(addr.city)}, ${escapeHtml(addr.state)} ${escapeHtml(addr.postal_code)}
+      </p>
+    </div>
+    <div style="background:${EMAIL_BRAND.warningBg};border:1px solid ${EMAIL_BRAND.warningBorder};border-radius:12px;padding:16px;">
+      <p style="margin:0;color:${EMAIL_BRAND.warning};font-size:13px;line-height:1.6;"><strong>Consejo:</strong> muele justo antes de preparar para obtener el máximo frescor y sabor.</p>
+    </div>`;
+
+  return {
+    subject: `Tu Bolsa de Café está en camino — Orden #${order.orderNumber}`,
+    html: emailLayout({
+      title: "Pedido en camino",
+      preheader: `Tu orden ${order.orderNumber} fue enviada.`,
+      headerTitle: "Tu café está en camino",
+      headerSubtitle: `Orden #${order.orderNumber}`,
+      bodyHtml: body,
+      cta: { label: "Ver mi cuenta", href: frontendUrl() },
+    }),
+  };
+}
+
+function deliveryEmail(
+  userName: string,
+  order: {
+    orderNumber: string;
+    planName: string;
+    weight: string;
+    blogPostTitle?: string;
+    blogPostSlug?: string;
+  },
+): { subject: string; html: string } {
+  let blogBlock = "";
+  if (order.blogPostTitle && order.blogPostSlug) {
+    blogBlock = `<div style="background:${EMAIL_BRAND.tintLight};border:1px solid ${EMAIL_BRAND.border};border-radius:12px;padding:18px;margin:20px 0;">
+      <h3 style="color:${EMAIL_BRAND.navy};margin:0 0 8px;font-size:15px;font-weight:700;">Conoce más sobre tu café</h3>
+      <p style="color:${EMAIL_BRAND.textMuted};font-size:14px;margin:0 0 14px;line-height:1.5;">${escapeHtml(order.blogPostTitle)}</p>
+      <a href="${frontendUrl()}/blog/${escapeHtml(order.blogPostSlug)}" style="display:inline-block;background:${EMAIL_BRAND.navyMid};color:${EMAIL_BRAND.white};text-decoration:none;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;">Leer artículo</a>
+    </div>`;
+  }
+
+  const body = `
+    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:${EMAIL_BRAND.navy};">Hola ${escapeHtml(userName)},</p>
+    <p style="margin:0 0 16px;color:${EMAIL_BRAND.textMuted};">Tu <strong style="color:${EMAIL_BRAND.text};">${escapeHtml(order.planName)} (${escapeHtml(order.weight)})</strong> fue marcado como entregado. Esperamos que disfrutes cada sorbo.</p>
+    ${bulletList("Consejos para el mejor café", [
+      "Almacena en lugar fresco, seco y alejado de la luz",
+      "Muele justo antes de preparar",
+      "Usa agua filtrada a 90–96 °C",
+      "Disfrútalo dentro de 4 semanas para máxima frescura",
+    ])}
+    ${blogBlock}
+    <p style="margin:16px 0 0;text-align:center;color:${EMAIL_BRAND.textMuted};font-size:13px;">Tu próximo envío ya está siendo preparado con el mismo cuidado.</p>`;
+
+  return {
+    subject: `Tu Bolsa de Café llegó — Orden #${order.orderNumber}`,
+    html: emailLayout({
+      title: "Pedido entregado",
+      preheader: `Tu orden ${order.orderNumber} fue entregada.`,
+      headerTitle: "Tu café llegó",
+      headerSubtitle: `Orden #${order.orderNumber}`,
+      bodyHtml: body,
+      cta: { label: "Ver mi suscripción", href: frontendUrl() },
+    }),
+  };
+}
+
+function paymentDeclinedCustomerEmail(
+  userName: string,
+  details: {
+    planName: string;
+    amount: number;
+    failureReason: string;
+    isRenewal: boolean;
+  },
+): { subject: string; html: string } {
+  const context = details.isRenewal
+    ? "No pudimos procesar el cobro de renovación de tu suscripción mensual."
+    : "No pudimos procesar el pago al activar tu suscripción.";
+
+  const body = `
+    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:${EMAIL_BRAND.navy};">Hola ${escapeHtml(userName)},</p>
+    <p style="margin:0 0 16px;color:${EMAIL_BRAND.textMuted};">${context} Tu tarjeta fue rechazada o el pago no pudo completarse.</p>
+    <div style="background:${EMAIL_BRAND.dangerBg};border:1px solid ${EMAIL_BRAND.dangerBorder};border-radius:12px;padding:18px;margin:0 0 20px;">
+      <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:${EMAIL_BRAND.danger};text-transform:uppercase;letter-spacing:0.05em;">Motivo</p>
+      <p style="margin:0;color:${EMAIL_BRAND.text};font-size:14px;line-height:1.5;">${escapeHtml(details.failureReason)}</p>
+    </div>
+    ${infoCard("Detalles", [
+      { label: "Plan", value: escapeHtml(details.planName) },
+      { label: "Monto", value: `$${details.amount.toFixed(2)} MXN` },
+    ])}
+    <p style="margin:0 0 12px;color:${EMAIL_BRAND.textMuted};font-size:14px;">Actualiza tu método de pago para mantener tu suscripción activa y no interrumpir tus envíos.</p>`;
+
+  return {
+    subject: details.isRenewal
+      ? "Acción requerida: problema con el pago de tu suscripción"
+      : "No pudimos procesar el pago de tu suscripción",
+    html: emailLayout({
+      title: "Pago rechazado",
+      preheader: "Actualiza tu método de pago para continuar con tu suscripción.",
+      headerTitle: "Pago no procesado",
+      headerSubtitle: "Tu tarjeta fue rechazada",
+      bodyHtml: body,
+      cta: { label: "Actualizar método de pago", href: frontendUrl() },
+    }),
+  };
+}
+
+function paymentDeclinedAdminEmail(details: {
+  userName: string;
+  userEmail: string;
+  planName: string;
+  amount: number;
+  failureReason: string;
+  stripeSubscriptionId?: string;
+  isRenewal: boolean;
+}): { subject: string; html: string } {
+  const adminUrl = `${frontendUrl()}/admin/subscriptions`;
+  const body = `
+    <p style="margin:0 0 16px;color:${EMAIL_BRAND.textMuted};">${details.isRenewal ? "Falló el cobro de renovación" : "Falló el pago inicial"} de una suscripción. El cliente y el equipo fueron notificados.</p>
+    ${infoCard("Detalle del fallo", [
+      { label: "Cliente", value: `${escapeHtml(details.userName)}<br><span style="font-weight:400;color:${EMAIL_BRAND.textMuted};">${escapeHtml(details.userEmail)}</span>` },
+      { label: "Plan", value: escapeHtml(details.planName) },
+      { label: "Monto", value: `$${details.amount.toFixed(2)} MXN` },
+      { label: "Motivo", value: escapeHtml(details.failureReason) },
+      ...(details.stripeSubscriptionId
+        ? [{ label: "Stripe sub", value: escapeHtml(details.stripeSubscriptionId) }]
+        : []),
+    ])}
+    <p style="margin:20px 0 0;text-align:center;"><a href="${adminUrl}" style="display:inline-block;background:linear-gradient(135deg,${EMAIL_BRAND.navyDark},${EMAIL_BRAND.navyMid});color:${EMAIL_BRAND.white};text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;">Ver suscripciones</a></p>`;
+
+  return {
+    subject: `Pago rechazado — ${details.userName} ($${details.amount.toFixed(2)} MXN)`,
+    html: emailLayout({
+      title: "Pago rechazado",
+      preheader: `Pago rechazado para ${details.userEmail}`,
+      headerTitle: "Pago rechazado",
+      headerSubtitle: details.userEmail,
+      badge: "Admin",
+      bodyHtml: body,
+    }),
+  };
+}
+
+
+
+function createResendClient() {
+  return new Resend(process.env.RESEND_API_KEY);
+}
+
+function getFromAddress() {
+  return process.env.SMTP_FROM || "Bolsa de Café <dihola@bolsadecafe.com>";
+}
+
+async function sendEmail(to: string | string[], subject: string, html: string) {
+  if (!process.env.RESEND_API_KEY) {
+    console.error("[Email] RESEND_API_KEY not configured — skipping send");
+    return;
+  }
+  const resend = createResendClient();
+  await resend.emails.send({
+    from: getFromAddress(),
+    to,
+    subject,
+    html,
+  });
+}
+
+async function sendSubscriptionConfirmationEmail(
+  userEmail: string,
+  userName: string,
+  details: Parameters<typeof subscriptionConfirmationEmail>[1],
+) {
   try {
-    if (!process.env.RESEND_API_KEY) return;
-
-    const [admins] = await pool.query<any[]>(
-      "SELECT email, full_name FROM admins WHERE is_active = 1",
-    );
-    if (admins.length === 0) return;
-
-    const adminUrl = process.env.FRONTEND_URL
-      ? `${process.env.FRONTEND_URL}/admin/subscriptions`
-      : "http://localhost:5173/admin/subscriptions";
-
-    const html = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-    <body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px;">
-        <tr><td>
-          <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08);">
-            <!-- Header -->
-            <tr>
-              <td style="background:linear-gradient(135deg,#0d1b3e 0%,#152a63 60%,#1d3c89 100%);padding:28px 30px;text-align:center;">
-                <img src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png" alt="Bolsadecafé" style="height:36px;width:auto;display:block;margin:0 auto 12px;" />
-                <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:100px;padding:6px 14px;">
-                  <span style="font-size:13px;color:rgba(255,255,255,0.9);font-weight:600;">📦 Nueva Orden Creada</span>
-                </div>
-              </td>
-            </tr>
-            <!-- Body -->
-            <tr>
-              <td style="padding:32px 30px 24px;">
-                <p style="margin:0 0 6px;font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;font-weight:600;">Número de orden</p>
-                <p style="margin:0 0 24px;font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-.3px;">${orderDetails.orderNumber}</p>
-
-                <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-                  <tr style="background:#f8fafc;">
-                    <td style="padding:12px 16px;font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Cliente</td>
-                    <td style="padding:12px 16px;font-size:14px;color:#0f172a;font-weight:600;text-align:right;">${orderDetails.userName}<br><span style="color:#64748b;font-weight:400;font-size:13px;">${orderDetails.userEmail}</span></td>
-                  </tr>
-                  <tr style="border-top:1px solid #e2e8f0;">
-                    <td style="padding:12px 16px;font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Plan</td>
-                    <td style="padding:12px 16px;font-size:14px;color:#0f172a;font-weight:600;text-align:right;">${orderDetails.planName}</td>
-                  </tr>
-                  <tr style="border-top:1px solid #e2e8f0;background:#f8fafc;">
-                    <td style="padding:12px 16px;font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Monto</td>
-                    <td style="padding:12px 16px;font-size:18px;color:#152a63;font-weight:800;text-align:right;">$${orderDetails.amount.toFixed(2)} MXN</td>
-                  </tr>
-                </table>
-
-                <div style="margin-top:28px;text-align:center;">
-                  <a href="${adminUrl}" style="display:inline-block;background:linear-gradient(135deg,#152a63,#1d3c89);color:#fff;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:700;font-size:14px;letter-spacing:-.1px;">Ver en el panel →</a>
-                </div>
-              </td>
-            </tr>
-            <!-- Footer -->
-            <tr>
-              <td style="padding:20px 30px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
-                <p style="margin:0;font-size:12px;color:#94a3b8;">Notificación automática · Bolsa de Café Admin Panel</p>
-              </td>
-            </tr>
-          </table>
-        </td></tr>
-      </table>
-    </body>
-    </html>`;
-
-    const adminEmails = admins.map((a) => a.email);
-    const resend = createResendClient();
-    await resend.emails.send({
-      from: getFromAddress(),
-      to: adminEmails,
-      subject: `📦 Nueva orden ${orderDetails.orderNumber} — $${orderDetails.amount.toFixed(2)} MXN`,
-      html,
-    });
-
-    console.log(
-      `[Webhook] 📧 Admin notification sent for order ${orderDetails.orderNumber} → ${adminEmails}`,
-    );
+    const { subject, html } = subscriptionConfirmationEmail(userName, details);
+    await sendEmail(userEmail, subject, html);
+    console.log(`[Email] Subscription confirmation sent to ${userEmail}`);
   } catch (err) {
-    console.error("[Webhook] Failed to send admin order notification:", err);
-    // Non-blocking — don't rethrow
+    console.error("[Email] Subscription confirmation failed:", err);
   }
 }
 
-/**
- * Send verification email with code
- */
+async function sendAdminNewOrderNotification(
+  pool: Pool,
+  details: {
+    orderNumber: string;
+    userName: string;
+    userEmail: string;
+    planName: string;
+    amount: number;
+  },
+) {
+  try {
+    if (!process.env.RESEND_API_KEY) return;
+    const [admins] = await pool.query<any[]>(
+      "SELECT email FROM admins WHERE is_active = 1",
+    );
+    if (admins.length === 0) return;
+    const { subject, html } = adminNewOrderEmail(details);
+    await sendEmail(
+      admins.map((a) => a.email),
+      subject,
+      html,
+    );
+    console.log(
+      `[Email] Admin new-order notification sent for ${details.orderNumber}`,
+    );
+  } catch (err) {
+    console.error("[Email] Admin new-order notification failed:", err);
+  }
+}
+
 async function sendVerificationEmail(
   email: string,
   code: number,
   firstName: string,
-): Promise<void> {
+) {
+  const { subject, html } = verificationEmail(firstName, code);
+  await sendEmail(email, subject, html);
+  console.log(`[Email] Verification code sent to ${email}`);
+}
+
+async function sendShippingEmail(
+  userEmail: string,
+  userName: string,
+  orderDetails: Parameters<typeof shippingEmail>[1],
+) {
   try {
-    console.log("📧 Sending verification email");
-    console.log("   Email:", email);
-    console.log("   Name:", firstName);
-
-    if (!process.env.RESEND_API_KEY) {
-      console.error("❌ RESEND_API_KEY not configured!");
-      return;
-    }
-
-    const emailBody = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #f2f2f2;
-            padding: 20px;
-            margin: 0;
-          }
-          .container { 
-            background-color: #ffffff;
-            border-radius: 8px;
-            padding: 40px 30px;
-            max-width: 600px;
-            margin: 0 auto;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          }
-          .header { 
-            background: linear-gradient(135deg, #152a63 0%, #1d3c89 100%);
-            color: #f2f2f2;
-            padding: 30px 20px;
-            border-radius: 8px;
-            text-align: center;
-            margin-bottom: 30px;
-          }
-          .header img {
-            height: 40px;
-            width: auto;
-            margin-bottom: 10px;
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-          }
-          .header p {
-            margin: 0;
-            font-size: 16px;
-            opacity: 0.85;
-          }
-          .content {
-            color: #545454;
-            line-height: 1.6;
-          }
-          .greeting {
-            font-size: 20px;
-            color: #1a3578;
-            margin: 0 0 20px 0;
-            font-weight: 500;
-          }
-          .code { 
-            font-size: 42px;
-            font-weight: bold;
-            color: #1a3578;
-            text-align: center;
-            padding: 30px 20px;
-            background: linear-gradient(135deg, #eef1f8 0%, #f7f8fc 100%);
-            border-radius: 8px;
-            margin: 30px 0;
-            letter-spacing: 10px;
-            border: 2px solid #c8d0e8;
-          }
-          .info {
-            background-color: #f7f8fc;
-            padding: 15px 20px;
-            border-radius: 6px;
-            border-left: 4px solid #1d3c89;
-            margin: 20px 0;
-          }
-          .info p {
-            margin: 0;
-            color: #545454;
-            font-size: 14px;
-          }
-          .footer { 
-            color: #808080;
-            font-size: 13px;
-            text-align: center;
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #d0dae6;
-          }
-          .footer strong {
-            color: #1a3578;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <img src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png" alt="Bolsadecafé" />
-            <p>Código de Verificación</p>
-          </div>
-          <div class="content">
-            <p class="greeting">Hola ${firstName},</p>
-            <p>Tu código de verificación es:</p>
-            <div class="code">${code}</div>
-            <div class="info">
-              <p><strong>⏱️ Validez:</strong> Este código expirará en <strong>15 minutos</strong></p>
-            </div>
-            <p style="margin-top: 20px; font-size: 14px;">Si no solicitaste este código, puedes ignorar este correo de forma segura.</p>
-          </div>
-          <div class="footer">
-            <p><strong>Bolsa de Café</strong> - Café de calidad a tu puerta</p>
-            <p style="margin-top: 8px;">© ${new Date().getFullYear()} Bolsa de Café. Todos los derechos reservados.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    const resend = createResendClient();
-    await resend.emails.send({
-      from: getFromAddress(),
-      to: email,
-      subject: `${code} es tu código de verificación`,
-      html: emailBody,
-    });
-
-    console.log("✅ Verification email sent successfully!");
-  } catch (error) {
-    console.error("❌ Error sending email:", error);
-    throw error;
+    const { subject, html } = shippingEmail(userName, orderDetails);
+    await sendEmail(userEmail, subject, html);
+    console.log(`[Email] Shipping notification sent to ${userEmail}`);
+  } catch (err) {
+    console.error("[Email] Shipping notification failed:", err);
   }
 }
 
+async function sendDeliveryEmail(
+  userEmail: string,
+  userName: string,
+  orderDetails: Parameters<typeof deliveryEmail>[1],
+) {
+  try {
+    const { subject, html } = deliveryEmail(userName, orderDetails);
+    await sendEmail(userEmail, subject, html);
+    console.log(`[Email] Delivery notification sent to ${userEmail}`);
+  } catch (err) {
+    console.error("[Email] Delivery notification failed:", err);
+  }
+}
+
+async function sendPaymentDeclinedNotifications(
+  pool: Pool,
+  details: {
+    userName: string;
+    userEmail: string;
+    planName: string;
+    amount: number;
+    failureReason: string;
+    stripeSubscriptionId?: string;
+    isRenewal: boolean;
+  },
+) {
+  try {
+    if (!process.env.RESEND_API_KEY) return;
+
+    const customer = paymentDeclinedCustomerEmail(details.userName, {
+      planName: details.planName,
+      amount: details.amount,
+      failureReason: details.failureReason,
+      isRenewal: details.isRenewal,
+    });
+    await sendEmail(details.userEmail, customer.subject, customer.html);
+
+    const [admins] = await pool.query<any[]>(
+      "SELECT email FROM admins WHERE is_active = 1",
+    );
+    if (admins.length > 0) {
+      const admin = paymentDeclinedAdminEmail(details);
+      await sendEmail(
+        admins.map((a) => a.email),
+        admin.subject,
+        admin.html,
+      );
+    }
+
+    console.log(
+      `[Email] Payment declined notifications sent for ${details.userEmail}`,
+    );
+  } catch (err) {
+    console.error("[Email] Payment declined notifications failed:", err);
+  }
+}
+
+
+
 // =====================================================
 // ROUTE HANDLERS
+// =====================================================
 // =====================================================
 
 /**
@@ -2106,9 +2322,35 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
       stripeSubscription.status !== "active" &&
       stripeSubscription.status !== "trialing"
     ) {
-      return res
-        .status(400)
-        .json({ success: false, error: "No se pudo confirmar el pago" });
+      const declineMessage = humanizeStripeDecline(
+        paymentIntent?.last_payment_error?.message,
+      );
+      const amount = parseFloat(plan.price_mxn);
+
+      await sendPaymentDeclinedNotifications(pool, {
+        userName: user.full_name,
+        userEmail: user.email,
+        planName: plan.name,
+        amount,
+        failureReason: declineMessage,
+        stripeSubscriptionId: stripeSubscription.id,
+        isRenewal: false,
+      });
+
+      try {
+        await stripe.subscriptions.cancel(stripeSubscription.id);
+      } catch (cancelErr) {
+        console.warn(
+          "[Subscription] Could not cancel incomplete Stripe subscription:",
+          cancelErr,
+        );
+      }
+
+      return res.status(402).json({
+        success: false,
+        error: declineMessage,
+        code: "card_declined",
+      });
     }
 
     // ── Resolve grind type ───────────────────────────────────────────
@@ -2370,7 +2612,13 @@ async function trackVisit(
     if (authHeader?.startsWith("Bearer ")) {
       try {
         const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
-        if (decoded?.userId) userId = decoded.userId as number;
+        if (decoded?.userId) {
+          const [rows] = await pool.query<any[]>(
+            "SELECT id FROM users WHERE id = ? LIMIT 1",
+            [decoded.userId],
+          );
+          if (rows.length > 0) userId = decoded.userId as number;
+        }
       } catch {
         // expired / invalid token — anonymous
       }
@@ -2618,13 +2866,12 @@ async function processInvoicePaymentSucceeded(
   const planName = planRows[0]?.name ?? `Plan #${sub.plan_id}`;
 
   // Notify all active admins
-  await sendAdminNewOrderNotification({
+  await sendAdminNewOrderNotification(pool, {
     orderNumber,
     userName: user.full_name,
     userEmail: user.email,
     planName,
     amount,
-    subscriptionId: sub.id,
   });
 
   console.log(
@@ -2644,6 +2891,18 @@ async function processInvoicePaymentFailed(
   const stripeSubscriptionId = inv.subscription as string | null;
   if (!stripeSubscriptionId) return;
 
+  const invoiceTag = `[invoice:${invoice.id}]`;
+  const [existingFailed] = await pool.query<any[]>(
+    `SELECT id FROM payments WHERE failure_reason LIKE ? AND status = 'failed' LIMIT 1`,
+    [`%${invoiceTag}%`],
+  );
+  if (existingFailed.length > 0) {
+    console.log(
+      `[Webhook] Invoice ${invoice.id} failure already processed, skipping`,
+    );
+    return;
+  }
+
   await pool.query(
     `UPDATE subscriptions SET status = 'past_due', updated_at = NOW()
      WHERE stripe_subscription_id = ?`,
@@ -2651,14 +2910,23 @@ async function processInvoicePaymentFailed(
   );
 
   const [subs] = await pool.query<any[]>(
-    "SELECT id, user_id FROM subscriptions WHERE stripe_subscription_id = ?",
+    `SELECT s.id, s.user_id, u.full_name, u.email, sp.name AS plan_name, sp.price_mxn
+     FROM subscriptions s
+     JOIN users u ON s.user_id = u.id
+     JOIN subscription_plans sp ON s.plan_id = sp.id
+     WHERE s.stripe_subscription_id = ?`,
     [stripeSubscriptionId],
   );
   if (subs.length === 0) return;
   const sub = subs[0];
 
-  const failureReason =
-    inv.last_finalization_error?.message || "Payment declined";
+  const failureReasonRaw =
+    inv.last_finalization_error?.message ||
+    inv.charge?.failure_message ||
+    "Payment declined";
+  const friendlyReason = humanizeStripeDecline(failureReasonRaw);
+  const failureReason = `${friendlyReason} ${invoiceTag}`;
+  const amount = (inv.amount_due ?? 0) / 100;
 
   await pool.query(
     `INSERT INTO payments
@@ -2669,12 +2937,22 @@ async function processInvoicePaymentFailed(
       sub.user_id,
       sub.id,
       (inv.payment_intent as string) ?? null,
-      (inv.amount_due ?? 0) / 100,
+      amount,
       failureReason,
     ],
   );
 
-  console.log(`[Webhook] ❌ Payment failed for subscription ${sub.id}`);
+  await sendPaymentDeclinedNotifications(pool, {
+    userName: sub.full_name,
+    userEmail: sub.email,
+    planName: sub.plan_name,
+    amount,
+    failureReason: friendlyReason,
+    stripeSubscriptionId,
+    isRenewal: true,
+  });
+
+  console.log(`[Webhook] Payment failed for subscription ${sub.id}`);
 }
 
 /**
@@ -2816,229 +3094,6 @@ function extractAdminId(req: any, res: any): number | null {
   }
 }
 
-// =====================================================
-// ADMIN EMAIL TEMPLATES
-// =====================================================
-
-async function sendShippingEmail(
-  userEmail: string,
-  userName: string,
-  orderDetails: {
-    orderNumber: string;
-    trackingNumber: string;
-    shipmentProvider: string;
-    estimatedDelivery: string;
-    planName: string;
-    weight: string;
-    coffeeName?: string;
-    address: {
-      full_name: string;
-      street_address: string;
-      street_address_2?: string;
-      city: string;
-      state: string;
-      postal_code: string;
-    };
-  },
-): Promise<void> {
-  try {
-    if (!process.env.RESEND_API_KEY) return;
-
-    const htmlTemplate = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Tu pedido está en camino</title>
-    </head>
-    <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:#f2f4f8;padding:40px 20px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-        <!-- Header -->
-        <tr>
-          <td style="background:linear-gradient(135deg,#152a63 0%,#1d3c89 100%);padding:36px 30px;text-align:center;">
-            <img src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png" alt="Bolsadecafé" style="height:44px;width:auto;display:block;margin:0 auto 14px auto;" />
-            <h1 style="color:#fff;margin:0;font-size:26px;font-weight:700;">¡Tu café está en camino! 🚚</h1>
-            <p style="color:rgba(255,255,255,0.8);margin:8px 0 0 0;font-size:15px;">Orden #${orderDetails.orderNumber}</p>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="padding:36px 30px 20px;">
-            <p style="font-size:18px;color:#1a1a1a;margin:0 0 12px 0;">¡Hola ${userName}! 👋</p>
-            <p style="font-size:15px;color:#555;line-height:1.7;margin:0 0 28px 0;">Tu pedido de café de especialidad ha sido enviado y está en camino a tu puerta. Te compartimos los detalles de envío:</p>
-            <!-- Shipping Card -->
-            <div style="background:linear-gradient(135deg,#f7f8fc 0%,#eef1f8 100%);border:2px solid #c8d0e8;border-radius:12px;padding:24px;margin-bottom:24px;">
-              <h2 style="color:#1a3578;margin:0 0 20px 0;font-size:18px;font-weight:700;">📦 Información de Envío</h2>
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="color:#666;font-size:14px;padding:10px 0;border-bottom:1px solid #d5daea;">Paquetería:</td>
-                  <td style="color:#1a1a1a;font-size:14px;font-weight:700;text-align:right;padding:10px 0;border-bottom:1px solid #d5daea;">${orderDetails.shipmentProvider}</td>
-                </tr>
-                <tr>
-                  <td style="color:#666;font-size:14px;padding:10px 0;border-bottom:1px solid #d5daea;">Número de rastreo:</td>
-                  <td style="color:#1a3578;font-size:14px;font-weight:700;text-align:right;padding:10px 0;border-bottom:1px solid #d5daea;">${orderDetails.trackingNumber}</td>
-                </tr>
-                <tr>
-                  <td style="color:#666;font-size:14px;padding:10px 0;border-bottom:1px solid #d5daea;">Entrega estimada:</td>
-                  <td style="color:#1a1a1a;font-size:14px;font-weight:700;text-align:right;padding:10px 0;border-bottom:1px solid #d5daea;">${orderDetails.estimatedDelivery}</td>
-                </tr>
-                <tr>
-                  <td style="color:#666;font-size:14px;padding:10px 0;">Producto:</td>
-                  <td style="color:#1a1a1a;font-size:14px;font-weight:600;text-align:right;padding:10px 0;">${orderDetails.planName} (${orderDetails.weight})</td>
-                </tr>
-                ${
-                  orderDetails.coffeeName
-                    ? `
-                <tr>
-                  <td style="color:#666;font-size:14px;padding:10px 0;border-top:1px solid #d5daea;">Café del envío:</td>
-                  <td style="color:#92400e;font-size:14px;font-weight:700;text-align:right;padding:10px 0;border-top:1px solid #d5daea;">☕ ${orderDetails.coffeeName}</td>
-                </tr>`
-                    : ""
-                }
-              </table>
-            </div>
-            <!-- Delivery Address -->
-            <div style="background:#f9fafb;border:2px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:24px;">
-              <h3 style="color:#1a1a1a;margin:0 0 12px 0;font-size:16px;font-weight:700;">🏠 Dirección de Entrega</h3>
-              <p style="margin:0;color:#1a1a1a;font-size:15px;line-height:1.6;font-weight:600;">${orderDetails.address.full_name}</p>
-              <p style="margin:6px 0 0 0;color:#666;font-size:14px;line-height:1.6;">
-                ${orderDetails.address.street_address}${orderDetails.address.street_address_2 ? ", " + orderDetails.address.street_address_2 : ""}<br>
-                ${orderDetails.address.city}, ${orderDetails.address.state} ${orderDetails.address.postal_code}
-              </p>
-            </div>
-            <!-- Tip -->
-            <div style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);border:2px solid #fcd34d;border-radius:12px;padding:18px;margin-bottom:24px;">
-              <p style="margin:0;color:#92400e;font-size:14px;line-height:1.6;"><strong>☕ Tip:</strong> Para disfrutar al máximo tu café, muélelo justo antes de prepararlo. ¡La frescura hace toda la diferencia!</p>
-            </div>
-          </td>
-        </tr>
-        <!-- CTA -->
-        <tr>
-          <td style="padding:0 30px 36px;text-align:center;">
-            <a href="${process.env.FRONTEND_URL || "http://localhost:5173"}" style="display:inline-block;background:linear-gradient(135deg,#1a3578 0%,#1d3c89 100%);color:#fff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:700;font-size:16px;box-shadow:0 4px 12px rgba(26,53,120,0.3);">Ver Mi Cuenta</a>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background:#f9fafb;padding:24px 30px;text-align:center;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 6px 0;color:#666;font-size:13px;">¿Tienes preguntas sobre tu envío?</p>
-            <p style="margin:0;font-size:13px;"><a href="mailto:hola@bolsadecafe.com" style="color:#1a3578;text-decoration:none;font-weight:600;">hola@bolsadecafe.com</a></p>
-            <p style="margin:14px 0 0 0;color:#999;font-size:12px;">© 2026 Bolsa de Café. Todos los derechos reservados.</p>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>`;
-
-    const resend = createResendClient();
-    await resend.emails.send({
-      from: getFromAddress(),
-      to: userEmail,
-      subject: `🚚 Tu Bolsa de Café está en camino - Orden #${orderDetails.orderNumber}`,
-      html: htmlTemplate,
-    });
-    console.log(`✅ Shipping email sent to ${userEmail}`);
-  } catch (error) {
-    console.error("Error sending shipping email:", error);
-  }
-}
-
-async function sendDeliveryEmail(
-  userEmail: string,
-  userName: string,
-  orderDetails: {
-    orderNumber: string;
-    planName: string;
-    weight: string;
-    blogPostTitle?: string;
-    blogPostSlug?: string;
-  },
-): Promise<void> {
-  try {
-    if (!process.env.RESEND_API_KEY) return;
-
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-    const blogSection =
-      orderDetails.blogPostTitle && orderDetails.blogPostSlug
-        ? `
-        <div style="background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border:2px solid #86efac;border-radius:12px;padding:20px;margin-bottom:24px;">
-          <h3 style="color:#166534;margin:0 0 10px 0;font-size:16px;font-weight:700;">📖 Conoce más sobre tu café</h3>
-          <p style="color:#15803d;font-size:14px;margin:0 0 14px 0;line-height:1.6;">${orderDetails.blogPostTitle}</p>
-          <a href="${frontendUrl}/blog/${orderDetails.blogPostSlug}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;">Leer Artículo →</a>
-        </div>`
-        : "";
-
-    const htmlTemplate = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>¡Tu café llegó!</title>
-    </head>
-    <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:#f2f4f8;padding:40px 20px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-        <!-- Header -->
-        <tr>
-          <td style="background:linear-gradient(135deg,#152a63 0%,#1d3c89 100%);padding:36px 30px;text-align:center;">
-            <img src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png" alt="Bolsadecafé" style="height:44px;width:auto;display:block;margin:0 auto 14px auto;" />
-            <h1 style="color:#fff;margin:0;font-size:26px;font-weight:700;">¡Tu café llegó! ☕</h1>
-            <p style="color:rgba(255,255,255,0.8);margin:8px 0 0 0;font-size:15px;">Orden #${orderDetails.orderNumber}</p>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="padding:36px 30px 20px;">
-            <p style="font-size:18px;color:#1a1a1a;margin:0 0 12px 0;">¡Hola ${userName}! ☕</p>
-            <p style="font-size:15px;color:#555;line-height:1.7;margin:0 0 24px 0;">¡Excelentes noticias! Tu <strong>${orderDetails.planName} (${orderDetails.weight})</strong> de café de especialidad ha sido marcado como recibido. Esperamos que disfrutes cada sorbo tanto como nosotros disfrutamos prepararlo para ti.</p>
-            <!-- Enjoyment card -->
-            <div style="background:linear-gradient(135deg,#f7f8fc 0%,#eef1f8 100%);border:2px solid #c8d0e8;border-radius:12px;padding:22px;margin-bottom:24px;">
-              <h2 style="color:#1a3578;margin:0 0 14px 0;font-size:17px;font-weight:700;">☕ Consejos para el Mejor Café</h2>
-              <ul style="margin:0;padding:0 0 0 18px;color:#555;font-size:14px;line-height:2.2;">
-                <li>Almacena en lugar fresco y seco, lejos de la luz directa</li>
-                <li>Para mejor sabor, muele justo antes de preparar</li>
-                <li>Usa agua filtrada a 90-96°C para extracción óptima</li>
-                <li>Disfruta dentro de 4 semanas para máxima frescura</li>
-              </ul>
-            </div>
-            ${blogSection}
-            <!-- Rating encouragement -->
-            <div style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);border:2px solid #fcd34d;border-radius:12px;padding:18px;margin-bottom:24px;">
-              <p style="margin:0;color:#92400e;font-size:14px;line-height:1.7;text-align:center;"><strong>⭐ ¿Cómo estuvo tu experiencia?</strong><br>Tu próximo envío ya está siendo preparado con el mismo amor y cuidado.</p>
-            </div>
-          </td>
-        </tr>
-        <!-- CTA -->
-        <tr>
-          <td style="padding:0 30px 36px;text-align:center;">
-            <a href="${frontendUrl}" style="display:inline-block;background:linear-gradient(135deg,#1a3578 0%,#1d3c89 100%);color:#fff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:700;font-size:16px;box-shadow:0 4px 12px rgba(26,53,120,0.3);">Ver Mi Suscripción</a>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background:#f9fafb;padding:24px 30px;text-align:center;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 6px 0;color:#666;font-size:13px;">¿Tienes preguntas o comentarios?</p>
-            <p style="margin:0;font-size:13px;"><a href="mailto:hola@bolsadecafe.com" style="color:#1a3578;text-decoration:none;font-weight:600;">hola@bolsadecafe.com</a></p>
-            <p style="margin:14px 0 0 0;color:#999;font-size:12px;">© 2026 Bolsa de Café. Todos los derechos reservados.</p>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>`;
-
-    const resend = createResendClient();
-    await resend.emails.send({
-      from: getFromAddress(),
-      to: userEmail,
-      subject: `☕ ¡Tu Bolsa de Café llegó! - Orden #${orderDetails.orderNumber}`,
-      html: htmlTemplate,
-    });
-    console.log(`✅ Delivery email sent to ${userEmail}`);
-  } catch (error) {
-    console.error("Error sending delivery email:", error);
-  }
-}
 
 // =====================================================
 // ADMIN ROUTE HANDLERS

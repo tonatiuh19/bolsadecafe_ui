@@ -243,15 +243,29 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
   // (Sheet + the 5 action Dialogs), the internal ref-counter that tracks open
   // layers can get stuck > 0, permanently blocking all page clicks after close.
   // We force-clean body styles once the 300ms exit animation has finished.
+  // On component unmount (e.g. navigating away) we clean up immediately.
   useEffect(() => {
     if (!open) {
       const t = setTimeout(() => {
         document.body.style.pointerEvents = "";
+        document.body.style.overflow = "";
         document.body.removeAttribute("data-scroll-locked");
+        document.getElementById("root")?.removeAttribute("aria-hidden");
       }, 350);
       return () => clearTimeout(t);
     }
   }, [open]);
+
+  // Ensure body styles are always restored when this component unmounts
+  // (e.g. the entire Index page navigates away while the Sheet is closing).
+  useEffect(() => {
+    return () => {
+      document.body.style.pointerEvents = "";
+      document.body.style.overflow = "";
+      document.body.removeAttribute("data-scroll-locked");
+      document.getElementById("root")?.removeAttribute("aria-hidden");
+    };
+  }, []);
 
   // Load data when sheet opens
   useEffect(() => {
@@ -403,7 +417,7 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
           }
         }}
       >
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto p-0">
+        <SheetContent className="w-full max-w-[100vw] sm:max-w-md overflow-y-auto p-0 safe-bottom">
           {/* Header */}
           <div className="bg-gradient-to-br from-neutral-100 via-brand-50 to-white px-6 pt-8 pb-6 border-b border-neutral-100">
             <SheetHeader>
@@ -416,7 +430,7 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
             </SheetHeader>
           </div>
 
-          <div className="px-6 py-6 space-y-6">
+          <div className="px-4 sm:px-6 py-4 sm:py-6 space-y-5 sm:space-y-6">
             {/* Feedback banners */}
             {actionSuccess && (
               <Alert className="border-emerald-200 bg-emerald-50">
@@ -444,6 +458,10 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                   </p>
                   <button
                     onClick={() => {
+                      // Immediately clear Radix scroll-lock styles so the
+                      // next page isn't left with pointer-events: none on body.
+                      document.body.style.pointerEvents = "";
+                      document.body.removeAttribute("data-scroll-locked");
                       onClose();
                       navigate("/subscription-wizard");
                     }}

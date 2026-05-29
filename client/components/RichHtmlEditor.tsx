@@ -189,10 +189,97 @@ export default function RichHtmlEditor({
     editorProps: {
       attributes: {
         class:
-          "prose prose-sm max-w-none min-h-[220px] p-4 focus:outline-none " +
+          "prose prose-sm dark:prose-invert max-w-none min-h-[220px] p-4 focus:outline-none " +
           "prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground " +
           "prose-ul:text-foreground prose-ol:text-foreground prose-blockquote:text-muted-foreground " +
-          "prose-code:text-amber-500 prose-pre:bg-accent/50 prose-a:text-amber-600",
+          "prose-code:text-amber-500 prose-pre:bg-accent/50 prose-a:text-amber-600 " +
+          "[&_*]:!text-align-inherit [&_p]:leading-relaxed [&_li]:my-0.5",
+      },
+      // Normalize pasted HTML to preserve rich formatting from
+      // Google Docs, Word, web pages, etc.
+      transformPastedHTML(html) {
+        const doc = new DOMParser().parseFromString(html, "text/html");
+
+        // 1. Unwrap Google Docs outer <b id="docs-internal-guid-…"> container
+        doc
+          .querySelectorAll('b[id^="docs-internal-guid"]')
+          .forEach((b) => b.replaceWith(...Array.from(b.childNodes)));
+
+        // 2. Strip Word/Outlook noise elements (<o:p>, mso- cruft, etc.)
+        doc
+          .querySelectorAll("o\\:p, w\\:sdt, w\\:sdtContent, xml, style")
+          .forEach((el) => el.remove());
+
+        // 3. Promote inline-style formatting on spans/divs to semantic tags.
+        //    Process in reverse document order so nested spans are handled correctly.
+        const styled = Array.from(
+          doc.querySelectorAll(
+            "span[style], div[style], font[color], font[size]",
+          ),
+        ).reverse();
+
+        styled.forEach((node) => {
+          const el = node as HTMLElement;
+          const fw = el.style.fontWeight;
+          const fs = el.style.fontStyle;
+          const td = el.style.textDecoration ?? "";
+          const va = el.style.verticalAlign;
+
+          // Helper: wrap el's current innerHTML in a new semantic tag
+          const wrap = (tag: string) => {
+            const w = doc.createElement(tag);
+            w.innerHTML = el.innerHTML;
+            el.innerHTML = "";
+            el.appendChild(w);
+          };
+
+          // Bold: font-weight bold / 600–900
+          if (fw === "bold" || (!isNaN(+fw) && +fw >= 600)) wrap("strong");
+          // Italic
+          if (fs === "italic" || fs === "oblique") wrap("em");
+          // Underline (skip if it's a link – links are underlined by default)
+          if (td.includes("underline") && el.closest("a") === null) wrap("u");
+          // Strikethrough
+          if (td.includes("line-through")) wrap("s");
+          // Superscript / subscript
+          if (va === "super") wrap("sup");
+          if (va === "sub") wrap("sub");
+
+          // Convert <font color="..."> to a span with inline color so
+          // TipTap's Color extension can pick it up.
+          if (node.tagName === "FONT") {
+            const color = (node as HTMLElement).getAttribute("color");
+            if (color) (node as HTMLElement).style.color = color;
+          }
+        });
+
+        // 4. Flatten purely-presentational <div>s that wrap single lines
+        //    (Google Docs wraps each paragraph in a <div>)
+        doc.querySelectorAll("div").forEach((div) => {
+          // Only unwrap divs that don't have meaningful block children
+          const hasBlockChild = Array.from(div.children).some((c) =>
+            /^(P|H[1-6]|UL|OL|LI|BLOCKQUOTE|PRE|TABLE|FIGURE)$/.test(c.tagName),
+          );
+          if (!hasBlockChild) {
+            const p = doc.createElement("p");
+            p.innerHTML = div.innerHTML;
+            div.replaceWith(p);
+          }
+        });
+
+        // 5. Remove empty tags left over after processing
+        doc
+          .querySelectorAll("span:empty, b:empty, i:empty")
+          .forEach((el) => el.remove());
+
+        return doc.body.innerHTML;
+      },
+      transformPastedText(text) {
+        // Convert consecutive newlines to paragraph breaks
+        return text
+          .split(/\n{2,}/)
+          .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+          .join("");
       },
     },
   });
@@ -239,7 +326,7 @@ export default function RichHtmlEditor({
 
   return (
     <TooltipProvider>
-      <div className="rounded-xl border border-border bg-background overflow-hidden">
+      <div className="rounded-xl border border-border bg-background overflow-hidden rich-editor-wrapper">
         {/* ── Toolbar ── */}
         <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border bg-accent/20 overflow-x-auto">
           {/* Heading buttons */}

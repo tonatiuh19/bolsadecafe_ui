@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Coffee } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import SEOMeta from "@/components/SEOMeta";
 
 export default function TermsAndConditions() {
@@ -27,16 +27,17 @@ export default function TermsAndConditions() {
             Volver al inicio
           </Button>
           <div className="flex items-center gap-2">
-            <Coffee className="h-5 w-5 text-brand-700" />
-            <span className="font-bold text-neutral-900 text-sm">
-              Bolsadecafé
-            </span>
+            <img
+              src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_dark.png"
+              alt="Bolsadecafé"
+              className="h-7 w-auto"
+            />
           </div>
         </div>
       </header>
 
       {/* Content */}
-      <main className="max-w-4xl mx-auto px-4 py-10 sm:px-6 sm:py-16">
+      <main className="w-full max-w-4xl mx-auto px-3 sm:px-4 md:px-6 py-6 sm:py-10 md:py-16">
         <div className="mb-10">
           <h1 className="text-3xl sm:text-4xl font-black text-neutral-900 mb-3">
             Términos y Condiciones
@@ -108,7 +109,7 @@ export default function TermsAndConditions() {
             <p className="mt-3">
               No se realizan reembolsos por períodos ya facturados. En caso de
               problemas con la entrega o calidad del producto, contáctenos a
-              hola@bolsadecafe.mx para resolver el inconveniente.
+              dihola@bolsadecafe.com para resolver el inconveniente.
             </p>
           </section>
 
@@ -160,13 +161,13 @@ export default function TermsAndConditions() {
             </p>
             <div className="mt-3 bg-neutral-50 border border-neutral-200 rounded-xl p-4 space-y-1">
               <p>
-                <strong>Email:</strong> hola@bolsadecafe.mx
+                <strong>Email:</strong> dihola@bolsadecafe.com
               </p>
               <p>
-                <strong>Teléfono:</strong> +52 55 1234 5678
+                <strong>Teléfono:</strong> +52 385 108 3785
               </p>
               <p>
-                <strong>Dirección:</strong> Ciudad de México, México
+                <strong>Dirección:</strong> Guadalajara, Jalisco
               </p>
             </div>
           </section>

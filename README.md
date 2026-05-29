@@ -153,12 +153,18 @@ In your Vercel project settings, add all environment variables from `.env`:
 
 4. **Setup Stripe Webhooks**:
 
-In your Stripe dashboard:
+See **[docs/stripe-webhooks.md](docs/stripe-webhooks.md)** for full development (Stripe CLI) and production (Vercel) setup.
 
-- Go to Developers → Webhooks
-- Add endpoint: `https://your-domain.vercel.app/api/webhook`
-- Select events to listen to (e.g., `checkout.session.completed`, `invoice.paid`)
-- Copy the webhook secret and update `STRIPE_WEBHOOK_SECRET` in Vercel
+Quick reference — endpoint: `https://your-domain.vercel.app/api/webhook`
+
+Events to enable:
+
+- `invoice.payment_succeeded` — renewals and initial charges (creates orders, notifies admins)
+- `invoice.payment_failed` — declined renewals (emails client + admins, sets `past_due`)
+- `customer.subscription.updated` — syncs status and billing period
+- `customer.subscription.deleted` — marks subscription cancelled
+
+Copy the signing secret to `STRIPE_WEBHOOK_SECRET` in Vercel (Production) or from `stripe listen` locally (Development).
 
 ## 📁 Project Structure
 
@@ -202,7 +208,7 @@ All API routes are in [api/index.ts](api/index.ts):
 
 ### Webhooks
 
-- `POST /api/webhook` - Stripe webhook handler (TODO: implement)
+- `POST /api/webhook` - Stripe webhook handler (see [docs/stripe-webhooks.md](docs/stripe-webhooks.md))
 
 ## 🔐 Stripe Integration
 

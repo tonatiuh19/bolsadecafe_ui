@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import { useNavigate } from "react-router-dom";
@@ -62,6 +62,7 @@ import {
   PlayCircle,
   ChevronDown,
   StickyNote,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -128,10 +129,16 @@ function OrderCard({
   order,
   onDragStart,
   isDragging,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
 }: {
   order: AdminOrder;
   onDragStart: (e: React.DragEvent, orderId: number) => void;
   isDragging: boolean;
+  onTouchStart: (e: React.TouchEvent, orderId: number) => void;
+  onTouchMove: (e: React.TouchEvent) => void;
+  onTouchEnd: (e: React.TouchEvent) => void;
 }) {
   const date = new Date(order.createdAt).toLocaleDateString("es-MX", {
     day: "numeric",
@@ -143,6 +150,10 @@ function OrderCard({
     <div
       draggable
       onDragStart={(e) => onDragStart(e, order.id)}
+      onTouchStart={(e) => onTouchStart(e, order.id)}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      style={{ touchAction: "none" }}
       className={cn(
         "group bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-700 p-4 cursor-grab active:cursor-grabbing transition-all duration-200 select-none",
         isDragging
@@ -178,6 +189,16 @@ function OrderCard({
               <span className="text-xs text-muted-foreground truncate">
                 {order.planName}
                 {order.planWeight ? ` · ${order.planWeight}` : ""}
+              </span>
+            </div>
+          )}
+
+          {/* Grind type */}
+          {order.grindTypeName && (
+            <div className="flex items-center gap-1.5 mb-2">
+              <Layers className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs text-muted-foreground truncate">
+                Molienda: {order.grindTypeName}
               </span>
             </div>
           )}
@@ -354,6 +375,10 @@ export default function AdminSubscriptions() {
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [dragOverCol, setDragOverCol] = useState<OrderStatus | null>(null);
 
+  // Touch drag state (iPad / touch devices)
+  const touchDragId = useRef<number | null>(null);
+  const touchGhostRef = useRef<HTMLDivElement | null>(null);
+
   // Modal state
   const [shippingDialogOrder, setShippingDialogOrder] =
     useState<AdminOrder | null>(null);
@@ -460,6 +485,84 @@ export default function AdminSubscriptions() {
       setDeliveredDialogOrder(order);
     }
   };
+
+  // ── Touch drag handlers (iPad / iOS Safari) ────────────────────────────────
+
+  const triggerDrop = useCallback(
+    (orderId: number, targetStatus: OrderStatus) => {
+      const order = orders.find((o) => o.id === orderId);
+      if (!order || order.status === targetStatus) return;
+      const statusIndex: Record<OrderStatus, number> = {
+        processing: 0,
+        shipped: 1,
+        delivered: 2,
+      };
+      if (statusIndex[targetStatus] <= statusIndex[order.status as OrderStatus])
+        return;
+      setPendingDrop({ orderId, targetStatus });
+      if (targetStatus === "shipped") setShippingDialogOrder(order);
+      else if (targetStatus === "delivered") setDeliveredDialogOrder(order);
+    },
+    [orders],
+  );
+
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent, orderId: number) => {
+      e.preventDefault();
+      touchDragId.current = orderId;
+      setDraggingId(orderId);
+      const touch = e.touches[0];
+      const order = orders.find((o) => o.id === orderId);
+      const ghost = document.createElement("div");
+      ghost.id = "order-drag-ghost";
+      ghost.style.cssText = `
+        position:fixed;left:${touch.clientX - 100}px;top:${touch.clientY - 28}px;
+        width:200px;padding:8px 12px;background:white;border:2px solid #f59e0b;
+        border-radius:12px;font-size:12px;font-weight:700;color:#92400e;
+        box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:9999;pointer-events:none;opacity:0.92;
+      `;
+      ghost.textContent = order?.orderNumber ?? "Orden";
+      document.body.appendChild(ghost);
+      touchGhostRef.current = ghost;
+    },
+    [orders],
+  );
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!touchDragId.current || !touchGhostRef.current) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    touchGhostRef.current.style.left = `${touch.clientX - 100}px`;
+    touchGhostRef.current.style.top = `${touch.clientY - 28}px`;
+    // Detect which column the finger is over
+    touchGhostRef.current.style.display = "none";
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    touchGhostRef.current.style.display = "block";
+    const colEl = el?.closest("[data-col-id]");
+    const colId = (colEl?.getAttribute("data-col-id") as OrderStatus) ?? null;
+    setDragOverCol(colId);
+  }, []);
+
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      if (!touchDragId.current) return;
+      const touch = e.changedTouches[0];
+      // Temporarily hide ghost to hit-test the element below
+      if (touchGhostRef.current) touchGhostRef.current.style.display = "none";
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (touchGhostRef.current) {
+        document.body.removeChild(touchGhostRef.current);
+        touchGhostRef.current = null;
+      }
+      const colEl = el?.closest("[data-col-id]");
+      const colId = (colEl?.getAttribute("data-col-id") as OrderStatus) ?? null;
+      if (colId) triggerDrop(touchDragId.current, colId);
+      touchDragId.current = null;
+      setDraggingId(null);
+      setDragOverCol(null);
+    },
+    [triggerDrop],
+  );
 
   // ── Shipping form ──────────────────────────────────────────────────────────
 
@@ -612,7 +715,7 @@ export default function AdminSubscriptions() {
           return (
             <div
               className={cn(
-                "fixed top-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium transition-all duration-300 animate-in slide-in-from-right-5",
+                "fixed z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium transition-all duration-300 animate-in slide-in-from-right-5 top-4 left-4 right-4 sm:top-6 sm:right-6 sm:left-auto sm:max-w-md",
                 t.type === "success"
                   ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-950 dark:border-green-800 dark:text-green-200"
                   : "bg-red-50 border-red-200 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200",
@@ -640,7 +743,7 @@ export default function AdminSubscriptions() {
       {/* ── Orders Pipeline (tab) ── */}
       {activeTab === "orders" && (
         <div
-          className="grid lg:grid-cols-3 gap-4 min-h-[600px]"
+          className="grid grid-cols-1 md:grid-cols-3 gap-4 min-h-0 md:min-h-[600px]"
           onDragEnd={handleDragEnd}
         >
           {COLUMNS.map((col) => {
@@ -650,11 +753,12 @@ export default function AdminSubscriptions() {
             return (
               <div
                 key={col.id}
+                data-col-id={col.id}
                 onDragOver={(e) => handleDragOver(e, col.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, col.id)}
                 className={cn(
-                  "flex flex-col rounded-2xl border-2 transition-all duration-200 min-h-[500px]",
+                  "flex flex-col rounded-2xl border-2 transition-all duration-200 min-h-[240px] md:min-h-[500px]",
                   isOver
                     ? `${col.borderColor} shadow-lg scale-[1.01]`
                     : "border-gray-200 dark:border-neutral-800",
@@ -721,6 +825,9 @@ export default function AdminSubscriptions() {
                         order={order}
                         onDragStart={handleDragStart}
                         isDragging={draggingId === order.id}
+                        onTouchStart={handleTouchStart}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
                       />
                     ))
                   )}

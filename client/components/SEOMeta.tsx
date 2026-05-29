@@ -101,12 +101,12 @@ export default function SEOMeta({
           logo: LOGO_URL,
           description,
           sameAs: [
-            "https://www.instagram.com/bolsadecafe",
-            "https://www.facebook.com/bolsadecafe",
+            "https://www.instagram.com/bolsadecafe_oficial/",
+            "https://www.facebook.com/profile.php?id=61566415721215",
           ],
           contactPoint: {
             "@type": "ContactPoint",
-            email: "hola@bolsadecafe.com",
+            email: "dihola@bolsadecafe.com",
             contactType: "customer service",
             areaServed: "MX",
             availableLanguage: "Spanish",

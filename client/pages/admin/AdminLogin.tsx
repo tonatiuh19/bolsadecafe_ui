@@ -99,7 +99,10 @@ function OtpInput({
   };
 
   return (
-    <div className="flex gap-2 justify-center" onPaste={handlePaste}>
+    <div
+      className="flex gap-1.5 sm:gap-2 justify-center px-1 sm:px-0"
+      onPaste={handlePaste}
+    >
       {digits.map((d, i) => (
         <input
           key={i}
@@ -115,7 +118,7 @@ function OtpInput({
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKey(i, e)}
           onFocus={(e) => e.target.select()}
-          className={`w-11 h-14 text-center text-xl font-bold rounded-xl border-2 outline-none transition-all duration-200 disabled:opacity-50
+          className={`w-9 h-12 sm:w-11 sm:h-14 text-center text-lg sm:text-xl font-bold rounded-xl border-2 outline-none transition-all duration-200 disabled:opacity-50
             ${
               d
                 ? "border-primary bg-primary/5 text-primary"
@@ -257,8 +260,8 @@ export default function AdminLogin() {
       </div>
 
       {/* ── Right panel ── */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 bg-gray-50 dark:bg-neutral-950">
-        <div className="w-full max-w-md">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8 lg:p-12 bg-gray-50 dark:bg-neutral-950">
+        <div className="w-full max-w-sm sm:max-w-md">
           {/* Mobile logo */}
           <div className="flex justify-center mb-8 lg:hidden">
             <img
