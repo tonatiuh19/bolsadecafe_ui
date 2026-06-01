@@ -31,7 +31,16 @@ const DB_CONFIG = {
   ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: true } : false,
 };
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+const stripeKey = process.env.STRIPE_SECRET_KEY ?? "";
+if (stripeKey.startsWith("sk_live_")) {
+  console.error(
+    "❌ Refusing to run: STRIPE_SECRET_KEY is a live key (sk_live_).\n" +
+      "   This script is for test/dev data only. Use sk_test_ in .env.",
+  );
+  process.exit(1);
+}
+
+const stripe = new Stripe(stripeKey, {
   apiVersion: "2025-03-31.basil",
 });
 

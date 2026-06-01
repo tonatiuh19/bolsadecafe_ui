@@ -66,6 +66,37 @@ export const createPaymentIntent = createAsyncThunk(
   },
 );
 
+export const finalizeSubscription = createAsyncThunk(
+  "payments/finalizeSubscription",
+  async (
+    payload: {
+      stripeSubscriptionId: string;
+      planId: string;
+      grindTypeId?: string;
+      address?: any;
+    },
+    { getState, rejectWithValue },
+  ) => {
+    const state = getState() as RootState;
+    const sessionToken = state.auth.sessionToken;
+    if (!sessionToken) throw new Error("No session token available");
+
+    try {
+      const { data } = await axios.post("/subscriptions/finalize", payload, {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      });
+      return data;
+    } catch (error: any) {
+      return rejectWithValue({
+        error:
+          error.response?.data?.error ||
+          error.message ||
+          "Error al finalizar la suscripción",
+      });
+    }
+  },
+);
+
 // ── Create Stripe Subscription after card is saved ───────────────────────
 export const createSubscription = createAsyncThunk(
   "payments/createSubscription",

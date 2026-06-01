@@ -12,7 +12,9 @@ const axiosInstance = axios.create({
 // Request interceptor — attach session ID and log
 axiosInstance.interceptors.request.use(
   (config) => {
-    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+    if (import.meta.env.DEV) {
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+    }
     // Attach visitor session ID so the server can track events inline
     let sessionId = sessionStorage.getItem("bdc_session_id");
     if (!sessionId) {
@@ -31,7 +33,9 @@ axiosInstance.interceptors.request.use(
 // Response interceptor for error handling
 axiosInstance.interceptors.response.use(
   (response) => {
-    console.log(`[API Response] ${response.status} ${response.config.url}`);
+    if (import.meta.env.DEV) {
+      console.log(`[API Response] ${response.status} ${response.config.url}`);
+    }
     return response;
   },
   (error) => {

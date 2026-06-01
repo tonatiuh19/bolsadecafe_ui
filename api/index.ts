@@ -8,12 +8,33 @@ import { Resend } from "resend";
 import Stripe from "stripe";
 import bcrypt from "bcryptjs";
 
+if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET must be set in production");
+}
+
 const JWT_SECRET =
   process.env.JWT_SECRET || "your-secret-key-change-in-production";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripeKey = process.env.STRIPE_SECRET_KEY ?? "";
+if (!/^sk_(test|live)_/.test(stripeKey)) {
+  console.error(
+    "STRIPE_SECRET_KEY must start with sk_test_ or sk_live_. " +
+      "Publishable keys (pk_*) and other key types cannot be used server-side.",
+  );
+}
+
+const stripe = new Stripe(stripeKey, {
   apiVersion: "2025-12-15.clover",
 });
+
+/** True when STRIPE_SECRET_KEY is a test key (sk_test_). Defaults to test if unset. */
+function isStripeTestMode(): boolean {
+  return process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ?? true;
+}
+
+function stripePriceIdColumn(): "stripe_price_id_test" | "stripe_price_id_prod" {
+  return isStripeTestMode() ? "stripe_price_id_test" : "stripe_price_id_prod";
+}
 
 // Database connection pool
 const pool = mysql.createPool({
@@ -62,37 +83,35 @@ function humanizeStripeDecline(message?: string | null): string {
  */
 
 const EMAIL_BRAND = {
-  /** brand-950 */
   navyDark: "#152a63",
-  /** brand-900 */
   navy: "#1a3578",
-  /** brand-800 */
   navyMid: "#1d3c89",
-  /** brand-600 */
+  heroBlue: "#2563b8",
   navySoft: "#4a5d8a",
-  /** brand-100 */
   tint: "#eef1f7",
-  /** brand-50 */
   tintLight: "#f7f8fc",
-  /** brand-200 */
-  border: "#cdd2df",
-  text: "#2a2a2a",
-  textMuted: "#6d6d6d",
+  border: "#d4d4d4",
+  borderLight: "#e8e8e8",
+  text: "#1a1a1a",
+  textMuted: "#5c5c5c",
   textLight: "#888888",
   white: "#ffffff",
-  bgPage: "#f2f2f2",
-  bgFooter: "#f8f8f8",
+  bgPage: "#ececec",
+  bgSecondary: "#f4f4f4",
+  bgFinePrint: "#fafafa",
   danger: "#b91c1c",
   dangerBg: "#fef2f2",
   dangerBorder: "#fecaca",
   warning: "#92400e",
   warningBg: "#fffbeb",
   warningBorder: "#fcd34d",
+  link: "#1d3c89",
 } as const;
 
-const LOGO_URL =
-  "https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_white.png";
+const LOGO_DARK_URL =
+  "https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_dark.png";
 const SUPPORT_EMAIL = "dihola@bolsadecafe.com";
+const EMAIL_TAGLINE = "Café de especialidad, directo a tu puerta";
 
 function escapeHtml(value: string): string {
   return value
@@ -103,38 +122,114 @@ function escapeHtml(value: string): string {
 }
 
 function frontendUrl(): string {
-  return process.env.FRONTEND_URL || "http://localhost:5173";
+  return process.env.FRONTEND_URL || "http://localhost:8080";
 }
+
+type EmailHeroIcon =
+  | "notification"
+  | "shipping"
+  | "payment"
+  | "verify"
+  | "order"
+  | "delivery";
 
 interface EmailLayoutOptions {
   title: string;
   preheader?: string;
-  headerTitle: string;
-  headerSubtitle?: string;
-  badge?: string;
+  recipientName: string;
+  recipientSubtitle?: string;
+  heroTitle: string;
+  heroIcon?: EmailHeroIcon;
   bodyHtml: string;
   cta?: { label: string; href: string };
+  secondaryBlock?: {
+    title: string;
+    bodyHtml: string;
+    linkLabel?: string;
+    linkHref?: string;
+  };
+  finePrint?: string;
 }
 
-/** Shared responsive email shell */
+function emailHeroIconSvg(kind: EmailHeroIcon): string {
+  const stroke = EMAIL_BRAND.white;
+  const common = `fill="none" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"`;
+  switch (kind) {
+    case "shipping":
+      return `<svg width="40" height="40" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path ${common} d="M3 7h11v8H3z"/><path ${common} d="M14 10h4l3 3v2h-7v-5z"/><circle cx="7.5" cy="17.5" r="1.5" fill="${stroke}"/><circle cx="17.5" cy="17.5" r="1.5" fill="${stroke}"/></svg>`;
+    case "payment":
+      return `<svg width="40" height="40" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="5" width="20" height="14" rx="2" ${common}/><path ${common} d="M2 10h20"/></svg>`;
+    case "verify":
+      return `<svg width="40" height="40" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path ${common} d="M12 3l7 4v5c0 4.5-3 7.7-7 9-4-1.3-7-4.5-7-9V7l7-4z"/><path ${common} d="M9 12l2 2 4-4"/></svg>`;
+    case "order":
+      return `<svg width="40" height="40" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path ${common} d="M6 6h15l-1.5 9H7.5L6 6z"/><path ${common} d="M6 6L5 3H2"/><circle cx="9" cy="20" r="1.5" fill="${stroke}"/><circle cx="18" cy="20" r="1.5" fill="${stroke}"/></svg>`;
+    case "delivery":
+      return `<svg width="40" height="40" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path ${common} d="M20 6L9 17l-5-5"/></svg>`;
+    default:
+      return `<svg width="40" height="40" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path ${common} d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path ${common} d="M13.7 21a2 2 0 01-3.4 0"/></svg>`;
+  }
+}
+
+function emailSecondaryIconSvg(): string {
+  return `<svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="none" stroke="${EMAIL_BRAND.heroBlue}" stroke-width="1.6" d="M4 19h16M6 16l6-10 6 10"/><circle cx="12" cy="8" r="2" fill="${EMAIL_BRAND.heroBlue}"/></svg>`;
+}
+
+function emailGreeting(name: string): string {
+  return `<p style="margin:0 0 18px;font-size:15px;color:${EMAIL_BRAND.text};line-height:1.5;">Estimado/a <strong>${escapeHtml(name)}</strong>,</p>`;
+}
+
+function emailLead(text: string): string {
+  return `<p style="margin:0 0 16px;font-size:15px;font-weight:700;color:${EMAIL_BRAND.text};line-height:1.55;">${text}</p>`;
+}
+
+function emailBodyText(text: string): string {
+  return `<p style="margin:0 0 16px;font-size:14px;color:${EMAIL_BRAND.textMuted};line-height:1.65;">${text}</p>`;
+}
+
+function emailClosing(): string {
+  return `<p style="margin:24px 0 0;font-size:14px;color:${EMAIL_BRAND.text};line-height:1.5;">Gracias por formar parte de <strong>Bolsa de Café</strong>.</p>`;
+}
+
+/** Amex-inspired transactional email shell */
 function emailLayout(opts: EmailLayoutOptions): string {
   const preheader = opts.preheader
     ? `<span style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(opts.preheader)}</span>`
     : "";
 
-  const badge = opts.badge
-    ? `<div style="display:inline-block;margin-top:12px;padding:6px 14px;border-radius:100px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);">
-         <span style="font-size:12px;color:rgba(255,255,255,0.92);font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">${escapeHtml(opts.badge)}</span>
-       </div>`
-    : "";
+  const heroIcon = emailHeroIconSvg(opts.heroIcon ?? "notification");
+  const recipientUpper = escapeHtml(opts.recipientName.toUpperCase());
 
-  const cta = opts.cta
+  const ctaRow = opts.cta
     ? `<tr>
-         <td style="padding:0 32px 36px;text-align:center;">
-           <a href="${escapeHtml(opts.cta.href)}" style="display:inline-block;background:linear-gradient(135deg,${EMAIL_BRAND.navy} 0%,${EMAIL_BRAND.navyMid} 100%);color:${EMAIL_BRAND.white};text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;letter-spacing:-0.01em;">${escapeHtml(opts.cta.label)}</a>
+         <td style="padding:8px 40px 32px;text-align:center;background:${EMAIL_BRAND.white};">
+           <a href="${escapeHtml(opts.cta.href)}" style="display:inline-block;background:${EMAIL_BRAND.navyDark};color:${EMAIL_BRAND.white};text-decoration:none;padding:14px 36px;border-radius:24px;font-weight:700;font-size:14px;letter-spacing:0.02em;mso-padding-alt:0;">${escapeHtml(opts.cta.label)}</a>
          </td>
        </tr>`
     : "";
+
+  const secondaryBlock = opts.secondaryBlock
+    ? `<tr>
+         <td style="padding:0;background:${EMAIL_BRAND.bgSecondary};border-top:1px solid ${EMAIL_BRAND.borderLight};">
+           <table width="100%" cellpadding="0" cellspacing="0">
+             <tr>
+               <td width="56" style="padding:28px 0 28px 32px;vertical-align:top;">${emailSecondaryIconSvg()}</td>
+               <td style="padding:28px 32px 28px 8px;vertical-align:top;">
+                 <p style="margin:0 0 8px;font-size:15px;font-weight:700;color:${EMAIL_BRAND.text};line-height:1.35;">${escapeHtml(opts.secondaryBlock.title)}</p>
+                 <p style="margin:0;font-size:13px;color:${EMAIL_BRAND.textMuted};line-height:1.6;">${opts.secondaryBlock.bodyHtml}${
+                   opts.secondaryBlock.linkLabel && opts.secondaryBlock.linkHref
+                     ? ` <a href="${escapeHtml(opts.secondaryBlock.linkHref)}" style="color:${EMAIL_BRAND.link};font-weight:600;text-decoration:underline;">${escapeHtml(opts.secondaryBlock.linkLabel)}</a>`
+                     : ""
+                 }</p>
+               </td>
+             </tr>
+           </table>
+         </td>
+       </tr>`
+    : "";
+
+  const finePrint =
+    opts.finePrint ??
+    `Este correo fue enviado por Bolsa de Café. Si tienes dudas, escríbenos a ${SUPPORT_EMAIL}.`;
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -143,30 +238,65 @@ function emailLayout(opts: EmailLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(opts.title)}</title>
 </head>
-<body style="margin:0;padding:0;background:${EMAIL_BRAND.bgPage};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<body style="margin:0;padding:0;background:${EMAIL_BRAND.bgPage};font-family:Helvetica,Arial,'Segoe UI',Roboto,sans-serif;">
   ${preheader}
-  <table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
-    <tr><td>
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:${EMAIL_BRAND.white};border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(21,42,99,0.08);border:1px solid ${EMAIL_BRAND.border};">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:${EMAIL_BRAND.bgPage};padding:24px 12px;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;background:${EMAIL_BRAND.white};border:1px solid ${EMAIL_BRAND.border};">
+        <!-- Header: logo + recipient -->
         <tr>
-          <td style="background:linear-gradient(135deg,${EMAIL_BRAND.navyDark} 0%,${EMAIL_BRAND.navyMid} 100%);padding:32px 28px;text-align:center;">
-            <img src="${LOGO_URL}" alt="Bolsadecafé" width="160" style="height:auto;max-height:44px;display:block;margin:0 auto;" />
-            <h1 style="color:${EMAIL_BRAND.white};margin:16px 0 0;font-size:24px;font-weight:800;letter-spacing:-0.02em;line-height:1.25;">${escapeHtml(opts.headerTitle)}</h1>
-            ${opts.headerSubtitle ? `<p style="color:rgba(255,255,255,0.82);margin:8px 0 0;font-size:14px;line-height:1.5;">${escapeHtml(opts.headerSubtitle)}</p>` : ""}
-            ${badge}
+          <td style="padding:20px 24px 16px;background:${EMAIL_BRAND.white};border-bottom:1px solid ${EMAIL_BRAND.borderLight};">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr>
+                <td width="120" style="vertical-align:middle;">
+                  <img src="${LOGO_DARK_URL}" alt="Bolsa de Café" width="110" style="display:block;height:auto;max-height:40px;border:0;" />
+                </td>
+                <td style="vertical-align:middle;text-align:right;padding-left:12px;">
+                  <p style="margin:0;font-size:13px;font-weight:700;color:${EMAIL_BRAND.text};letter-spacing:0.03em;line-height:1.3;">${recipientUpper}</p>
+                  ${opts.recipientSubtitle ? `<p style="margin:4px 0 0;font-size:12px;color:${EMAIL_BRAND.textMuted};line-height:1.4;">${escapeHtml(opts.recipientSubtitle)}</p>` : ""}
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>
+        <!-- Hero banner -->
         <tr>
-          <td style="padding:32px 28px 24px;color:${EMAIL_BRAND.text};font-size:15px;line-height:1.65;">
+          <td style="background:${EMAIL_BRAND.heroBlue};padding:28px 32px;">
+            <table cellpadding="0" cellspacing="0" role="presentation">
+              <tr>
+                <td width="52" style="vertical-align:middle;padding-right:16px;">${heroIcon}</td>
+                <td style="vertical-align:middle;">
+                  <p style="margin:0;font-size:26px;font-weight:300;color:${EMAIL_BRAND.white};letter-spacing:-0.01em;line-height:1.2;">${escapeHtml(opts.heroTitle)}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Main body -->
+        <tr>
+          <td style="padding:32px 40px 8px;background:${EMAIL_BRAND.white};color:${EMAIL_BRAND.text};font-size:14px;line-height:1.65;">
             ${opts.bodyHtml}
           </td>
         </tr>
-        ${cta}
+        ${ctaRow}
+        ${secondaryBlock}
+        <!-- Brand tagline band -->
         <tr>
-          <td style="background:${EMAIL_BRAND.bgFooter};padding:24px 28px;text-align:center;border-top:1px solid ${EMAIL_BRAND.border};">
-            <p style="margin:0 0 6px;color:${EMAIL_BRAND.textMuted};font-size:13px;">¿Necesitas ayuda?</p>
-            <p style="margin:0;font-size:13px;"><a href="mailto:${SUPPORT_EMAIL}" style="color:${EMAIL_BRAND.navyMid};text-decoration:none;font-weight:600;">${SUPPORT_EMAIL}</a></p>
-            <p style="margin:14px 0 0;color:${EMAIL_BRAND.textLight};font-size:11px;">© ${new Date().getFullYear()} Bolsa de Café. Todos los derechos reservados.</p>
+          <td style="background:${EMAIL_BRAND.navyDark};padding:22px 32px;text-align:center;">
+            <p style="margin:0;font-size:15px;font-weight:600;color:${EMAIL_BRAND.white};letter-spacing:0.04em;text-transform:uppercase;line-height:1.4;">${EMAIL_TAGLINE}</p>
+          </td>
+        </tr>
+        <!-- Contact -->
+        <tr>
+          <td style="padding:20px 32px;text-align:center;background:${EMAIL_BRAND.white};border-top:1px solid ${EMAIL_BRAND.borderLight};">
+            <a href="mailto:${SUPPORT_EMAIL}" style="color:${EMAIL_BRAND.link};font-size:14px;font-weight:600;text-decoration:underline;">Contáctanos</a>
+          </td>
+        </tr>
+        <!-- Fine print -->
+        <tr>
+          <td style="padding:16px 32px 24px;background:${EMAIL_BRAND.bgFinePrint};border-top:1px solid ${EMAIL_BRAND.borderLight};">
+            <p style="margin:0;font-size:11px;color:${EMAIL_BRAND.textLight};line-height:1.55;text-align:center;">${finePrint}</p>
+            <p style="margin:10px 0 0;font-size:11px;color:${EMAIL_BRAND.textLight};line-height:1.5;text-align:center;">&copy; ${new Date().getFullYear()} Bolsa de Café. Todos los derechos reservados.</p>
           </td>
         </tr>
       </table>
@@ -180,29 +310,64 @@ function infoCard(title: string, rows: { label: string; value: string }[]): stri
   const rowHtml = rows
     .map(
       (r, i) => `<tr>
-        <td style="color:${EMAIL_BRAND.textMuted};font-size:13px;padding:10px 0;${i < rows.length - 1 ? `border-bottom:1px solid ${EMAIL_BRAND.border};` : ""}">${escapeHtml(r.label)}</td>
-        <td style="color:${EMAIL_BRAND.text};font-size:13px;font-weight:600;text-align:right;padding:10px 0;${i < rows.length - 1 ? `border-bottom:1px solid ${EMAIL_BRAND.border};` : ""}">${r.value}</td>
+        <td style="color:${EMAIL_BRAND.textMuted};font-size:13px;padding:11px 0;width:42%;vertical-align:top;${i < rows.length - 1 ? `border-bottom:1px solid ${EMAIL_BRAND.borderLight};` : ""}">${escapeHtml(r.label)}</td>
+        <td style="color:${EMAIL_BRAND.text};font-size:13px;font-weight:600;text-align:right;padding:11px 0;vertical-align:top;${i < rows.length - 1 ? `border-bottom:1px solid ${EMAIL_BRAND.borderLight};` : ""}">${r.value}</td>
       </tr>`,
     )
     .join("");
 
-  return `<div style="background:${EMAIL_BRAND.tintLight};border:1px solid ${EMAIL_BRAND.border};border-radius:12px;padding:20px;margin:20px 0;">
-    <h2 style="color:${EMAIL_BRAND.navy};margin:0 0 14px;font-size:16px;font-weight:700;">${escapeHtml(title)}</h2>
-    <table width="100%" cellpadding="0" cellspacing="0">${rowHtml}</table>
-  </div>`;
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:20px 0;background:${EMAIL_BRAND.bgSecondary};border:1px solid ${EMAIL_BRAND.borderLight};">
+    <tr><td style="padding:18px 20px 6px;">
+      <p style="margin:0;font-size:14px;font-weight:700;color:${EMAIL_BRAND.navy};">${escapeHtml(title)}</p>
+    </td></tr>
+    <tr><td style="padding:0 20px 18px;">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation">${rowHtml}</table>
+    </td></tr>
+  </table>`;
 }
 
 function bulletList(title: string, items: string[]): string {
   const lis = items
     .map(
       (item) =>
-        `<li style="margin:0 0 8px;color:${EMAIL_BRAND.navySoft};font-size:14px;line-height:1.5;">${escapeHtml(item)}</li>`,
+        `<li style="margin:0 0 6px;color:${EMAIL_BRAND.textMuted};font-size:13px;line-height:1.55;">${escapeHtml(item)}</li>`,
     )
     .join("");
-  return `<div style="background:${EMAIL_BRAND.tint};border:1px solid ${EMAIL_BRAND.border};border-radius:12px;padding:18px 20px;margin:20px 0;">
-    <h3 style="color:${EMAIL_BRAND.navy};margin:0 0 10px;font-size:14px;font-weight:700;">${escapeHtml(title)}</h3>
-    <ul style="margin:0;padding:0 0 0 18px;">${lis}</ul>
-  </div>`;
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:16px 0;background:${EMAIL_BRAND.bgSecondary};border:1px solid ${EMAIL_BRAND.borderLight};">
+    <tr><td style="padding:18px 20px;">
+      <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:${EMAIL_BRAND.navy};">${escapeHtml(title)}</p>
+      <ul style="margin:0;padding:0 0 0 18px;">${lis}</ul>
+    </td></tr>
+  </table>`;
+}
+
+function addressBlock(title: string, addressHtml: string): string {
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:16px 0;background:${EMAIL_BRAND.bgSecondary};border:1px solid ${EMAIL_BRAND.borderLight};">
+    <tr><td style="padding:18px 20px;">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:${EMAIL_BRAND.text};">${escapeHtml(title)}</p>
+      <p style="margin:0;color:${EMAIL_BRAND.textMuted};font-size:13px;line-height:1.6;">${addressHtml}</p>
+    </td></tr>
+  </table>`;
+}
+
+function alertBlock(label: string, message: string, variant: "danger" | "warning" = "danger"): string {
+  const bg = variant === "danger" ? EMAIL_BRAND.dangerBg : EMAIL_BRAND.warningBg;
+  const border = variant === "danger" ? EMAIL_BRAND.dangerBorder : EMAIL_BRAND.warningBorder;
+  const color = variant === "danger" ? EMAIL_BRAND.danger : EMAIL_BRAND.warning;
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:16px 0;background:${bg};border:1px solid ${border};">
+    <tr><td style="padding:16px 18px;">
+      <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.06em;">${escapeHtml(label)}</p>
+      <p style="margin:0;font-size:14px;color:${EMAIL_BRAND.text};line-height:1.5;">${escapeHtml(message)}</p>
+    </td></tr>
+  </table>`;
+}
+
+function verificationCodeBlock(code: number): string {
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:20px 0;">
+    <tr><td align="center" style="padding:20px;background:${EMAIL_BRAND.bgSecondary};border:1px solid ${EMAIL_BRAND.border};">
+      <p style="margin:0;font-size:36px;font-weight:700;color:${EMAIL_BRAND.navy};letter-spacing:10px;font-family:Helvetica,Arial,monospace;">${code}</p>
+    </td></tr>
+  </table>`;
 }
 
 // ─── Template builders ───────────────────────────────────────────────────────
@@ -232,8 +397,9 @@ function subscriptionConfirmationEmail(
     ${escapeHtml(addr.city)}, ${escapeHtml(addr.state)} ${escapeHtml(addr.postal_code)}${addr.phone ? `<br>Tel: ${escapeHtml(addr.phone)}` : ""}`;
 
   const body = `
-    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:${EMAIL_BRAND.navy};">Hola ${escapeHtml(userName)},</p>
-    <p style="margin:0 0 8px;color:${EMAIL_BRAND.textMuted};">Gracias por suscribirte a <strong style="color:${EMAIL_BRAND.text};">Bolsa de Café</strong>. Tu suscripción está activa y pronto recibirás tu primer envío de café de especialidad.</p>
+    ${emailGreeting(userName)}
+    ${emailLead(`Tu suscripción a <strong>Bolsa de Café</strong> está confirmada. Pronto recibirás tu primer envío de café de especialidad.`)}
+    ${emailBodyText("A continuación encontrarás el resumen de tu plan y la dirección de entrega registrada.")}
     ${infoCard("Detalles de tu suscripción", [
       { label: "Plan", value: escapeHtml(details.planName) },
       { label: "Cantidad", value: escapeHtml(details.weight) },
@@ -241,26 +407,32 @@ function subscriptionConfirmationEmail(
       { label: "Precio mensual", value: `$${escapeHtml(details.price)} MXN` },
       { label: "Próxima entrega", value: escapeHtml(details.nextDelivery) },
     ])}
-    <div style="background:${EMAIL_BRAND.bgFooter};border:1px solid ${EMAIL_BRAND.border};border-radius:12px;padding:18px 20px;margin:20px 0;">
-      <h3 style="color:${EMAIL_BRAND.text};margin:0 0 10px;font-size:15px;font-weight:700;">Dirección de entrega</h3>
-      <p style="margin:0;color:${EMAIL_BRAND.textMuted};font-size:14px;line-height:1.6;">${addressHtml}</p>
-    </div>
+    ${addressBlock("Dirección de entrega", addressHtml)}
     ${bulletList("Incluido en tu plan", [
       "Café 100% mexicano de especialidad",
       "Envío gratis en toda la República",
       "Sin compromiso — cancela cuando quieras",
       "Frescura garantizada — tostado artesanal",
-    ])}`;
+    ])}
+    ${emailClosing()}`;
 
   return {
     subject: "Tu suscripción a Bolsa de Café está confirmada",
     html: emailLayout({
       title: "Suscripción confirmada",
       preheader: "Tu café está en camino. Revisa los detalles de tu suscripción.",
-      headerTitle: "Suscripción confirmada",
-      headerSubtitle: "Tu café está en camino",
+      recipientName: userName,
+      recipientSubtitle: `Plan: ${details.planName} (${details.weight})`,
+      heroTitle: "Suscripción confirmada",
+      heroIcon: "notification",
       bodyHtml: body,
       cta: { label: "Ver mi cuenta", href: frontendUrl() },
+      secondaryBlock: {
+        title: "Explora nuestro blog",
+        bodyHtml: "Descubre origen, preparación y consejos para sacarle el máximo a tu café.",
+        linkLabel: "Leer artículos",
+        linkHref: `${frontendUrl()}/blog`,
+      },
     }),
   };
 }
@@ -274,24 +446,26 @@ function adminNewOrderEmail(details: {
 }): { subject: string; html: string } {
   const adminUrl = `${frontendUrl()}/admin/subscriptions`;
   const body = `
-    <p style="margin:0 0 6px;font-size:12px;color:${EMAIL_BRAND.textLight};text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Número de orden</p>
-    <p style="margin:0 0 20px;font-size:22px;font-weight:800;color:${EMAIL_BRAND.text};letter-spacing:-0.02em;">${escapeHtml(details.orderNumber)}</p>
-    ${infoCard("Resumen", [
+    ${emailGreeting("Equipo")}
+    ${emailLead(`Se registró una nueva orden: <strong>${escapeHtml(details.orderNumber)}</strong>.`)}
+    ${infoCard("Resumen de la orden", [
       { label: "Cliente", value: `${escapeHtml(details.userName)}<br><span style="font-weight:400;color:${EMAIL_BRAND.textMuted};">${escapeHtml(details.userEmail)}</span>` },
       { label: "Plan", value: escapeHtml(details.planName) },
       { label: "Monto", value: `$${details.amount.toFixed(2)} MXN` },
-    ])}
-    <p style="margin:24px 0 0;text-align:center;"><a href="${adminUrl}" style="display:inline-block;background:linear-gradient(135deg,${EMAIL_BRAND.navyDark},${EMAIL_BRAND.navyMid});color:${EMAIL_BRAND.white};text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;">Ver en el panel</a></p>`;
+    ])}`;
 
   return {
     subject: `Nueva orden ${details.orderNumber} — $${details.amount.toFixed(2)} MXN`,
     html: emailLayout({
       title: "Nueva orden",
       preheader: `Nueva orden ${details.orderNumber} de ${details.userName}`,
-      headerTitle: "Nueva orden creada",
-      headerSubtitle: details.orderNumber,
-      badge: "Admin",
+      recipientName: "Panel de administración",
+      recipientSubtitle: `Orden ${details.orderNumber}`,
+      heroTitle: "Nueva orden",
+      heroIcon: "order",
       bodyHtml: body,
+      cta: { label: "Ver en el panel", href: adminUrl },
+      finePrint: "Notificación interna para el equipo de Bolsa de Café.",
     }),
   };
 }
@@ -301,21 +475,20 @@ function verificationEmail(
   code: number,
 ): { subject: string; html: string } {
   const body = `
-    <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:${EMAIL_BRAND.navy};">Hola ${escapeHtml(firstName)},</p>
-    <p style="margin:0 0 20px;color:${EMAIL_BRAND.textMuted};">Tu código de verificación es:</p>
-    <div style="font-size:36px;font-weight:800;color:${EMAIL_BRAND.navy};text-align:center;padding:24px 16px;background:${EMAIL_BRAND.tintLight};border-radius:12px;border:2px solid ${EMAIL_BRAND.border};letter-spacing:8px;margin:0 0 20px;">${code}</div>
-    <div style="background:${EMAIL_BRAND.tint};border-left:4px solid ${EMAIL_BRAND.navyMid};padding:14px 16px;border-radius:0 8px 8px 0;margin:0 0 16px;">
-      <p style="margin:0;color:${EMAIL_BRAND.textMuted};font-size:13px;"><strong style="color:${EMAIL_BRAND.text};">Validez:</strong> este código expira en <strong>15 minutos</strong>.</p>
-    </div>
-    <p style="margin:0;color:${EMAIL_BRAND.textLight};font-size:13px;">Si no solicitaste este código, puedes ignorar este correo.</p>`;
+    ${emailGreeting(firstName)}
+    ${emailLead("Usa el siguiente código para acceder a tu cuenta de forma segura.")}
+    ${verificationCodeBlock(code)}
+    ${emailBodyText("<strong>Validez:</strong> este código expira en <strong>15 minutos</strong>. Si no solicitaste este acceso, puedes ignorar este correo.")}`;
 
   return {
     subject: `${code} es tu código de verificación`,
     html: emailLayout({
       title: "Código de verificación",
       preheader: `Tu código de verificación es ${code}`,
-      headerTitle: "Código de verificación",
-      headerSubtitle: "Acceso seguro sin contraseña",
+      recipientName: firstName,
+      recipientSubtitle: "Acceso seguro sin contraseña",
+      heroTitle: "Código de verificación",
+      heroIcon: "verify",
       bodyHtml: body,
     }),
   };
@@ -352,29 +525,27 @@ function shippingEmail(
   }
 
   const addr = order.address;
+  const addressHtml = `${escapeHtml(addr.full_name)}<br>
+    ${escapeHtml(addr.street_address)}${addr.street_address_2 ? `<br>${escapeHtml(addr.street_address_2)}` : ""}<br>
+    ${escapeHtml(addr.city)}, ${escapeHtml(addr.state)} ${escapeHtml(addr.postal_code)}`;
+
   const body = `
-    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:${EMAIL_BRAND.navy};">Hola ${escapeHtml(userName)},</p>
-    <p style="margin:0 0 8px;color:${EMAIL_BRAND.textMuted};">Tu pedido ha sido enviado y está en camino. Aquí están los detalles:</p>
+    ${emailGreeting(userName)}
+    ${emailLead(`Tu pedido <strong>#${escapeHtml(order.orderNumber)}</strong> ha sido enviado y está en camino.`)}
     ${infoCard("Información de envío", rows)}
-    <div style="background:${EMAIL_BRAND.bgFooter};border:1px solid ${EMAIL_BRAND.border};border-radius:12px;padding:18px;margin:20px 0;">
-      <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:${EMAIL_BRAND.text};">Dirección de entrega</h3>
-      <p style="margin:0;color:${EMAIL_BRAND.textMuted};font-size:14px;line-height:1.6;">
-        ${escapeHtml(addr.full_name)}<br>
-        ${escapeHtml(addr.street_address)}${addr.street_address_2 ? `, ${escapeHtml(addr.street_address_2)}` : ""}<br>
-        ${escapeHtml(addr.city)}, ${escapeHtml(addr.state)} ${escapeHtml(addr.postal_code)}
-      </p>
-    </div>
-    <div style="background:${EMAIL_BRAND.warningBg};border:1px solid ${EMAIL_BRAND.warningBorder};border-radius:12px;padding:16px;">
-      <p style="margin:0;color:${EMAIL_BRAND.warning};font-size:13px;line-height:1.6;"><strong>Consejo:</strong> muele justo antes de preparar para obtener el máximo frescor y sabor.</p>
-    </div>`;
+    ${addressBlock("Dirección de entrega", addressHtml)}
+    ${alertBlock("Consejo", "Muele justo antes de preparar para obtener el máximo frescor y sabor.", "warning")}
+    ${emailClosing()}`;
 
   return {
     subject: `Tu Bolsa de Café está en camino — Orden #${order.orderNumber}`,
     html: emailLayout({
       title: "Pedido en camino",
       preheader: `Tu orden ${order.orderNumber} fue enviada.`,
-      headerTitle: "Tu café está en camino",
-      headerSubtitle: `Orden #${order.orderNumber}`,
+      recipientName: userName,
+      recipientSubtitle: `Orden #${order.orderNumber}`,
+      heroTitle: "Tu café está en camino",
+      heroIcon: "shipping",
       bodyHtml: body,
       cta: { label: "Ver mi cuenta", href: frontendUrl() },
     }),
@@ -391,36 +562,45 @@ function deliveryEmail(
     blogPostSlug?: string;
   },
 ): { subject: string; html: string } {
-  let blogBlock = "";
-  if (order.blogPostTitle && order.blogPostSlug) {
-    blogBlock = `<div style="background:${EMAIL_BRAND.tintLight};border:1px solid ${EMAIL_BRAND.border};border-radius:12px;padding:18px;margin:20px 0;">
-      <h3 style="color:${EMAIL_BRAND.navy};margin:0 0 8px;font-size:15px;font-weight:700;">Conoce más sobre tu café</h3>
-      <p style="color:${EMAIL_BRAND.textMuted};font-size:14px;margin:0 0 14px;line-height:1.5;">${escapeHtml(order.blogPostTitle)}</p>
-      <a href="${frontendUrl()}/blog/${escapeHtml(order.blogPostSlug)}" style="display:inline-block;background:${EMAIL_BRAND.navyMid};color:${EMAIL_BRAND.white};text-decoration:none;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;">Leer artículo</a>
-    </div>`;
-  }
+  const secondaryBlock =
+    order.blogPostTitle && order.blogPostSlug
+      ? {
+          title: "Conoce más sobre tu café",
+          bodyHtml: escapeHtml(order.blogPostTitle) + ".",
+          linkLabel: "Leer artículo",
+          linkHref: `${frontendUrl()}/blog/${order.blogPostSlug}`,
+        }
+      : {
+          title: "Explora nuestro blog",
+          bodyHtml: "Descubre origen, preparación y consejos para tu café.",
+          linkLabel: "Leer artículos",
+          linkHref: `${frontendUrl()}/blog`,
+        };
 
   const body = `
-    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:${EMAIL_BRAND.navy};">Hola ${escapeHtml(userName)},</p>
-    <p style="margin:0 0 16px;color:${EMAIL_BRAND.textMuted};">Tu <strong style="color:${EMAIL_BRAND.text};">${escapeHtml(order.planName)} (${escapeHtml(order.weight)})</strong> fue marcado como entregado. Esperamos que disfrutes cada sorbo.</p>
+    ${emailGreeting(userName)}
+    ${emailLead(`Tu <strong>${escapeHtml(order.planName)} (${escapeHtml(order.weight)})</strong> fue entregado. Esperamos que disfrutes cada sorbo.`)}
+    ${emailBodyText("Tu próximo envío ya está siendo preparado con el mismo cuidado.")}
     ${bulletList("Consejos para el mejor café", [
       "Almacena en lugar fresco, seco y alejado de la luz",
       "Muele justo antes de preparar",
       "Usa agua filtrada a 90–96 °C",
       "Disfrútalo dentro de 4 semanas para máxima frescura",
     ])}
-    ${blogBlock}
-    <p style="margin:16px 0 0;text-align:center;color:${EMAIL_BRAND.textMuted};font-size:13px;">Tu próximo envío ya está siendo preparado con el mismo cuidado.</p>`;
+    ${emailClosing()}`;
 
   return {
     subject: `Tu Bolsa de Café llegó — Orden #${order.orderNumber}`,
     html: emailLayout({
       title: "Pedido entregado",
       preheader: `Tu orden ${order.orderNumber} fue entregada.`,
-      headerTitle: "Tu café llegó",
-      headerSubtitle: `Orden #${order.orderNumber}`,
+      recipientName: userName,
+      recipientSubtitle: `Orden #${order.orderNumber}`,
+      heroTitle: "Tu café llegó",
+      heroIcon: "delivery",
       bodyHtml: body,
       cta: { label: "Ver mi suscripción", href: frontendUrl() },
+      secondaryBlock,
     }),
   };
 }
@@ -439,17 +619,15 @@ function paymentDeclinedCustomerEmail(
     : "No pudimos procesar el pago al activar tu suscripción.";
 
   const body = `
-    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:${EMAIL_BRAND.navy};">Hola ${escapeHtml(userName)},</p>
-    <p style="margin:0 0 16px;color:${EMAIL_BRAND.textMuted};">${context} Tu tarjeta fue rechazada o el pago no pudo completarse.</p>
-    <div style="background:${EMAIL_BRAND.dangerBg};border:1px solid ${EMAIL_BRAND.dangerBorder};border-radius:12px;padding:18px;margin:0 0 20px;">
-      <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:${EMAIL_BRAND.danger};text-transform:uppercase;letter-spacing:0.05em;">Motivo</p>
-      <p style="margin:0;color:${EMAIL_BRAND.text};font-size:14px;line-height:1.5;">${escapeHtml(details.failureReason)}</p>
-    </div>
-    ${infoCard("Detalles", [
+    ${emailGreeting(userName)}
+    ${emailLead(`${context} Tu tarjeta fue rechazada o el pago no pudo completarse.`)}
+    ${alertBlock("Motivo del rechazo", details.failureReason)}
+    ${infoCard("Detalles del cobro", [
       { label: "Plan", value: escapeHtml(details.planName) },
       { label: "Monto", value: `$${details.amount.toFixed(2)} MXN` },
     ])}
-    <p style="margin:0 0 12px;color:${EMAIL_BRAND.textMuted};font-size:14px;">Actualiza tu método de pago para mantener tu suscripción activa y no interrumpir tus envíos.</p>`;
+    ${emailBodyText("Actualiza tu método de pago para mantener tu suscripción activa y no interrumpir tus envíos.")}
+    ${emailClosing()}`;
 
   return {
     subject: details.isRenewal
@@ -458,8 +636,10 @@ function paymentDeclinedCustomerEmail(
     html: emailLayout({
       title: "Pago rechazado",
       preheader: "Actualiza tu método de pago para continuar con tu suscripción.",
-      headerTitle: "Pago no procesado",
-      headerSubtitle: "Tu tarjeta fue rechazada",
+      recipientName: userName,
+      recipientSubtitle: `Plan: ${details.planName}`,
+      heroTitle: "Pago no procesado",
+      heroIcon: "payment",
       bodyHtml: body,
       cta: { label: "Actualizar método de pago", href: frontendUrl() },
     }),
@@ -477,7 +657,9 @@ function paymentDeclinedAdminEmail(details: {
 }): { subject: string; html: string } {
   const adminUrl = `${frontendUrl()}/admin/subscriptions`;
   const body = `
-    <p style="margin:0 0 16px;color:${EMAIL_BRAND.textMuted};">${details.isRenewal ? "Falló el cobro de renovación" : "Falló el pago inicial"} de una suscripción. El cliente y el equipo fueron notificados.</p>
+    ${emailGreeting("Equipo")}
+    ${emailLead(details.isRenewal ? "Falló el cobro de renovación de una suscripción." : "Falló el pago inicial de una suscripción.")}
+    ${emailBodyText("El cliente recibió un correo para actualizar su método de pago.")}
     ${infoCard("Detalle del fallo", [
       { label: "Cliente", value: `${escapeHtml(details.userName)}<br><span style="font-weight:400;color:${EMAIL_BRAND.textMuted};">${escapeHtml(details.userEmail)}</span>` },
       { label: "Plan", value: escapeHtml(details.planName) },
@@ -486,18 +668,20 @@ function paymentDeclinedAdminEmail(details: {
       ...(details.stripeSubscriptionId
         ? [{ label: "Stripe sub", value: escapeHtml(details.stripeSubscriptionId) }]
         : []),
-    ])}
-    <p style="margin:20px 0 0;text-align:center;"><a href="${adminUrl}" style="display:inline-block;background:linear-gradient(135deg,${EMAIL_BRAND.navyDark},${EMAIL_BRAND.navyMid});color:${EMAIL_BRAND.white};text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;">Ver suscripciones</a></p>`;
+    ])}`;
 
   return {
     subject: `Pago rechazado — ${details.userName} ($${details.amount.toFixed(2)} MXN)`,
     html: emailLayout({
       title: "Pago rechazado",
       preheader: `Pago rechazado para ${details.userEmail}`,
-      headerTitle: "Pago rechazado",
-      headerSubtitle: details.userEmail,
-      badge: "Admin",
+      recipientName: details.userName,
+      recipientSubtitle: details.userEmail,
+      heroTitle: "Pago rechazado",
+      heroIcon: "payment",
       bodyHtml: body,
+      cta: { label: "Ver suscripciones", href: adminUrl },
+      finePrint: "Notificación interna para el equipo de Bolsa de Café.",
     }),
   };
 }
@@ -1606,10 +1790,7 @@ const handleUpgradeSubscriptionPlan: RequestHandler = async (req, res) => {
 
     const sub = subs[0];
 
-    // Get new plan stripe price id
-    const env = process.env.NODE_ENV;
-    const priceField =
-      env === "production" ? "stripe_price_id_prod" : "stripe_price_id_test";
+    const priceField = stripePriceIdColumn();
     const [plans] = await pool.query<any[]>(
       `SELECT id, ${priceField} AS stripe_price_id FROM subscription_plans WHERE id = ? AND is_active = 1`,
       [newPlanId],
@@ -1738,7 +1919,7 @@ const handleBillingPortal: RequestHandler = async (req, res) => {
 
     const session = await stripe.billingPortal.sessions.create({
       customer: users[0].stripe_customer_id,
-      return_url: `${process.env.FRONTEND_URL || "http://localhost:5173"}/`,
+      return_url: `${frontendUrl()}/`,
     });
 
     res.json({ success: true, url: session.url });
@@ -1858,7 +2039,12 @@ const handleCreateSetupIntent: RequestHandler = async (req, res) => {
     res.json({ clientSecret: setupIntent.client_secret });
   } catch (error) {
     console.error("Error creating setup intent:", error);
-    res.status(500).json({ error: "Error al crear configuración de pago" });
+    const stripeMsg =
+      error instanceof Stripe.errors.StripeError ? error.message : undefined;
+    res.status(500).json({
+      error: "Error al crear configuración de pago",
+      ...(stripeMsg && { details: stripeMsg }),
+    });
   }
 };
 
@@ -2107,10 +2293,8 @@ const handleCreatePaymentIntent: RequestHandler = async (req, res) => {
     }
 
     // Determine environment - check if using test or production Stripe key
-    const isTestMode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_");
-    const priceIdColumn = isTestMode
-      ? "stripe_price_id_test"
-      : "stripe_price_id_prod";
+    const isTestMode = isStripeTestMode();
+    const priceIdColumn = stripePriceIdColumn();
 
     // Fetch plan from database with appropriate price ID
     const [plans] = await pool.query<any[]>(
@@ -2178,6 +2362,224 @@ const handleCreatePaymentIntent: RequestHandler = async (req, res) => {
     });
   }
 };
+
+type ResolvedSubscription =
+  | { outcome: "active"; subscription: Stripe.Subscription; invoice: any; paymentIntent: Stripe.PaymentIntent | null }
+  | { outcome: "requires_action"; subscription: Stripe.Subscription; invoice: any; paymentIntent: Stripe.PaymentIntent }
+  | { outcome: "failed"; subscription: Stripe.Subscription; invoice: any; paymentIntent: Stripe.PaymentIntent | null };
+
+/** Poll Stripe until the first invoice payment settles, fails, or needs 3DS. */
+async function resolveSubscriptionPayment(
+  subscriptionId: string,
+  maxWaitMs = 15000,
+): Promise<ResolvedSubscription> {
+  const intervalMs = 1000;
+  const maxAttempts = Math.ceil(maxWaitMs / intervalMs);
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ["latest_invoice.payment_intent"],
+    });
+    const invoice = subscription.latest_invoice as any;
+    const paymentIntent = (invoice?.payment_intent ?? null) as Stripe.PaymentIntent | null;
+
+    if (subscription.status === "active" || subscription.status === "trialing") {
+      return { outcome: "active", subscription, invoice, paymentIntent };
+    }
+
+    if (paymentIntent?.status === "requires_action" && paymentIntent.client_secret) {
+      return { outcome: "requires_action", subscription, invoice, paymentIntent };
+    }
+
+    if (
+      paymentIntent?.last_payment_error ||
+      paymentIntent?.status === "requires_payment_method"
+    ) {
+      return { outcome: "failed", subscription, invoice, paymentIntent };
+    }
+
+    if (
+      paymentIntent?.status === "processing" ||
+      subscription.status === "incomplete"
+    ) {
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        continue;
+      }
+    }
+
+    return { outcome: "failed", subscription, invoice, paymentIntent };
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+    expand: ["latest_invoice.payment_intent"],
+  });
+  const invoice = subscription.latest_invoice as any;
+  const paymentIntent = (invoice?.payment_intent ?? null) as Stripe.PaymentIntent | null;
+  return { outcome: "failed", subscription, invoice, paymentIntent };
+}
+
+async function persistNewSubscription(params: {
+  userId: number;
+  user: any;
+  plan: any;
+  planId: string;
+  grindTypeId?: string;
+  shippingAddressId: number | null;
+  stripeSubscription: Stripe.Subscription;
+  latestInvoice: any;
+}): Promise<any> {
+  const {
+    userId,
+    planId,
+    grindTypeId,
+    shippingAddressId,
+    stripeSubscription,
+    latestInvoice,
+  } = params;
+
+  let actualGrindTypeId: number | null = null;
+  if (grindTypeId) {
+    const [grindRows] = await pool.query<any[]>(
+      "SELECT id FROM grind_types WHERE code = ?",
+      [grindTypeId],
+    );
+    if (grindRows.length > 0) actualGrindTypeId = grindRows[0].id;
+  }
+
+  const [planRows] = await pool.query<any[]>(
+    "SELECT id FROM subscription_plans WHERE plan_id = ?",
+    [planId],
+  );
+  const actualPlanId = planRows[0].id;
+
+  const sub = stripeSubscription as any;
+  const periodStart = new Date(
+    (sub.current_period_start ?? Date.now() / 1000) * 1000,
+  );
+  const periodEnd = new Date(
+    (sub.current_period_end ?? Date.now() / 1000 + 2592000) * 1000,
+  );
+
+  const [result] = await pool.query<any>(
+    `INSERT INTO subscriptions
+       (user_id, plan_id, grind_type_id, shipping_address_id, stripe_subscription_id,
+        status, current_period_start, current_period_end, cancel_at_period_end, cancelled_at)
+     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, 0, NULL)`,
+    [
+      userId,
+      actualPlanId,
+      actualGrindTypeId,
+      shippingAddressId,
+      stripeSubscription.id,
+      periodStart,
+      periodEnd,
+    ],
+  );
+
+  const subscriptionId = result.insertId;
+  const invoiceId = latestInvoice?.id as string | null;
+  const invoicePaymentIntentId =
+    (latestInvoice?.payment_intent as Stripe.PaymentIntent)?.id ??
+    (latestInvoice?.payment_intent as string) ??
+    null;
+  const invoiceAmountPaid = ((latestInvoice?.amount_paid as number) ?? 0) / 100;
+
+  const orderNumber = `BDC-${Date.now()}-${subscriptionId}`;
+  const [orderResult] = await pool.query<any>(
+    `INSERT INTO orders
+       (user_id, subscription_id, order_number, stripe_payment_intent_id,
+        stripe_invoice_id, total_amount, currency, status,
+        shipping_address_id, grind_type_id)
+     VALUES (?, ?, ?, ?, ?, ?, 'MXN', 'processing', ?, ?)`,
+    [
+      userId,
+      subscriptionId,
+      orderNumber,
+      invoicePaymentIntentId,
+      invoiceId,
+      invoiceAmountPaid,
+      shippingAddressId ?? null,
+      actualGrindTypeId ?? null,
+    ],
+  );
+
+  await pool.query(
+    `INSERT INTO order_items (order_id, plan_id, quantity, unit_price, subtotal)
+     VALUES (?, ?, 1, ?, ?)`,
+    [orderResult.insertId, actualPlanId, invoiceAmountPaid, invoiceAmountPaid],
+  );
+
+  await pool.query(
+    `INSERT INTO payments
+       (user_id, order_id, subscription_id, stripe_payment_id,
+        amount, currency, status, payment_method)
+     VALUES (?, ?, ?, ?, ?, 'MXN', 'succeeded', 'card')`,
+    [
+      userId,
+      orderResult.insertId,
+      subscriptionId,
+      invoicePaymentIntentId,
+      invoiceAmountPaid,
+    ],
+  );
+
+  console.log(
+    `[Subscription] ✅ Order ${orderNumber} created (invoice: ${invoiceId})`,
+  );
+
+  const [subscriptions] = await pool.query<any[]>(
+    `SELECT s.*,
+            u.email, u.full_name,
+            sp.name as plan_name, sp.weight, sp.price_mxn,
+            gt.name as grind_type_name,
+            ms.name as state_name,
+            a.full_name as address_full_name, a.street_address, a.street_address_2,
+            a.city, a.postal_code, a.phone as address_phone
+     FROM subscriptions s
+     JOIN users u ON s.user_id = u.id
+     JOIN subscription_plans sp ON s.plan_id = sp.id
+     LEFT JOIN grind_types gt ON s.grind_type_id = gt.id
+     LEFT JOIN addresses a ON s.shipping_address_id = a.id
+     LEFT JOIN mexico_states ms ON a.state_id = ms.id
+     WHERE s.id = ?`,
+    [subscriptionId],
+  );
+
+  const subscription = subscriptions[0];
+
+  if (subscription.shipping_address_id) {
+    const nextDeliveryDate = new Date(subscription.current_period_end);
+    const formattedDate = nextDeliveryDate.toLocaleDateString("es-MX", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    await sendSubscriptionConfirmationEmail(
+      subscription.email,
+      subscription.full_name,
+      {
+        planName: subscription.plan_name,
+        weight: subscription.weight,
+        price: parseFloat(subscription.price_mxn).toFixed(2),
+        grindType: subscription.grind_type_name || "Grano Entero",
+        nextDelivery: formattedDate,
+        address: {
+          full_name: subscription.address_full_name,
+          street_address: subscription.street_address,
+          street_address_2: subscription.street_address_2,
+          city: subscription.city,
+          state: subscription.state_name,
+          postal_code: subscription.postal_code,
+          phone: subscription.address_phone,
+        },
+      },
+    );
+  }
+
+  return subscription;
+}
 
 /**
  * POST /api/subscriptions
@@ -2269,10 +2671,8 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
     }
 
     // ── Resolve plan ────────────────────────────────────────────────────
-    const isTestMode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_");
-    const priceIdColumn = isTestMode
-      ? "stripe_price_id_test"
-      : "stripe_price_id_prod";
+    const isTestMode = isStripeTestMode();
+    const priceIdColumn = stripePriceIdColumn();
 
     const [plans] = await pool.query<any[]>(
       `SELECT *, ${priceIdColumn} as stripe_price_id FROM subscription_plans WHERE plan_id = ? AND is_active = 1`,
@@ -2301,44 +2701,37 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
       expand: ["latest_invoice.payment_intent"],
     });
 
-    // Handle 3DS / requires_action
-    const latestInvoice = stripeSubscription.latest_invoice as any;
-    const paymentIntent =
-      latestInvoice?.payment_intent as Stripe.PaymentIntent | null;
+    const resolved = await resolveSubscriptionPayment(stripeSubscription.id);
 
-    if (
-      stripeSubscription.status === "incomplete" &&
-      paymentIntent?.status === "requires_action"
-    ) {
+    if (resolved.outcome === "requires_action") {
       return res.json({
         success: false,
         requiresAction: true,
-        clientSecret: paymentIntent.client_secret,
-        stripeSubscriptionId: stripeSubscription.id,
+        clientSecret: resolved.paymentIntent.client_secret,
+        stripeSubscriptionId: resolved.subscription.id,
       });
     }
 
-    if (
-      stripeSubscription.status !== "active" &&
-      stripeSubscription.status !== "trialing"
-    ) {
-      const declineMessage = humanizeStripeDecline(
-        paymentIntent?.last_payment_error?.message,
-      );
+    if (resolved.outcome === "failed") {
+      const declineMessage = resolved.paymentIntent?.last_payment_error?.message
+        ? humanizeStripeDecline(resolved.paymentIntent.last_payment_error.message)
+        : "No se pudo procesar el pago inicial. Por favor intenta de nuevo.";
       const amount = parseFloat(plan.price_mxn);
 
-      await sendPaymentDeclinedNotifications(pool, {
-        userName: user.full_name,
-        userEmail: user.email,
-        planName: plan.name,
-        amount,
-        failureReason: declineMessage,
-        stripeSubscriptionId: stripeSubscription.id,
-        isRenewal: false,
-      });
+      if (resolved.paymentIntent?.last_payment_error) {
+        await sendPaymentDeclinedNotifications(pool, {
+          userName: user.full_name,
+          userEmail: user.email,
+          planName: plan.name,
+          amount,
+          failureReason: declineMessage,
+          stripeSubscriptionId: resolved.subscription.id,
+          isRenewal: false,
+        });
+      }
 
       try {
-        await stripe.subscriptions.cancel(stripeSubscription.id);
+        await stripe.subscriptions.cancel(resolved.subscription.id);
       } catch (cancelErr) {
         console.warn(
           "[Subscription] Could not cancel incomplete Stripe subscription:",
@@ -2349,167 +2742,22 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
       return res.status(402).json({
         success: false,
         error: declineMessage,
-        code: "card_declined",
+        code: resolved.paymentIntent?.last_payment_error
+          ? "card_declined"
+          : "payment_incomplete",
       });
     }
 
-    // ── Resolve grind type ───────────────────────────────────────────
-    let actualGrindTypeId: number | null = null;
-    if (grindTypeId) {
-      const [grindRows] = await pool.query<any[]>(
-        "SELECT id FROM grind_types WHERE code = ?",
-        [grindTypeId],
-      );
-      if (grindRows.length > 0) actualGrindTypeId = grindRows[0].id;
-    }
-
-    // ── Get plan DB id ────────────────────────────────────────────────
-    const [planRows] = await pool.query<any[]>(
-      "SELECT id FROM subscription_plans WHERE plan_id = ?",
-      [planId],
-    );
-    const actualPlanId = planRows[0].id;
-
-    // ── Insert subscription record ───────────────────────────────────
-    const sub = stripeSubscription as any;
-    const periodStart = new Date(
-      (sub.current_period_start ?? Date.now() / 1000) * 1000,
-    );
-    const periodEnd = new Date(
-      (sub.current_period_end ?? Date.now() / 1000 + 2592000) * 1000,
-    );
-
-    const [result] = await pool.query<any>(
-      `INSERT INTO subscriptions
-         (user_id, plan_id, grind_type_id, shipping_address_id, stripe_subscription_id,
-          status, current_period_start, current_period_end, cancel_at_period_end, cancelled_at)
-       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, 0, NULL)`,
-      [
-        userId,
-        actualPlanId,
-        actualGrindTypeId,
-        shippingAddressId,
-        stripeSubscription.id,
-        periodStart,
-        periodEnd,
-      ],
-    );
-
-    const subscriptionId = result.insertId;
-
-    // ── Create initial order + payment record ─────────────────────────
-    // We do this here (not only in the webhook) to avoid a race condition:
-    // the invoice.payment_succeeded webhook can arrive before this function
-    // finishes, find no subscription row, and silently skip order creation.
-    // The unique stripe_invoice_id constraint makes the webhook idempotent
-    // if it arrives later and tries to insert the same invoice again.
-    const invoiceId = latestInvoice?.id as string | null;
-    const invoicePaymentIntentId =
-      (latestInvoice?.payment_intent as Stripe.PaymentIntent)?.id ??
-      (latestInvoice?.payment_intent as string) ??
-      null;
-    const invoiceAmountPaid =
-      ((latestInvoice?.amount_paid as number) ?? 0) / 100;
-
-    const orderNumber = `BDC-${Date.now()}-${subscriptionId}`;
-    const [orderResult] = await pool.query<any>(
-      `INSERT INTO orders
-         (user_id, subscription_id, order_number, stripe_payment_intent_id,
-          stripe_invoice_id, total_amount, currency, status,
-          shipping_address_id, grind_type_id)
-       VALUES (?, ?, ?, ?, ?, ?, 'MXN', 'processing', ?, ?)`,
-      [
-        userId,
-        subscriptionId,
-        orderNumber,
-        invoicePaymentIntentId,
-        invoiceId,
-        invoiceAmountPaid,
-        shippingAddressId ?? null,
-        actualGrindTypeId ?? null,
-      ],
-    );
-
-    await pool.query(
-      `INSERT INTO order_items (order_id, plan_id, quantity, unit_price, subtotal)
-       VALUES (?, ?, 1, ?, ?)`,
-      [
-        orderResult.insertId,
-        actualPlanId,
-        invoiceAmountPaid,
-        invoiceAmountPaid,
-      ],
-    );
-
-    await pool.query(
-      `INSERT INTO payments
-         (user_id, order_id, subscription_id, stripe_payment_id,
-          amount, currency, status, payment_method)
-       VALUES (?, ?, ?, ?, ?, 'MXN', 'succeeded', 'card')`,
-      [
-        userId,
-        orderResult.insertId,
-        subscriptionId,
-        invoicePaymentIntentId,
-        invoiceAmountPaid,
-      ],
-    );
-
-    console.log(
-      `[Subscription] ✅ Order ${orderNumber} created (invoice: ${invoiceId})`,
-    );
-
-    // ── Fetch full details for email ─────────────────────────────────
-    const [subscriptions] = await pool.query<any[]>(
-      `SELECT s.*,
-              u.email, u.full_name,
-              sp.name as plan_name, sp.weight, sp.price_mxn,
-              gt.name as grind_type_name,
-              ms.name as state_name,
-              a.full_name as address_full_name, a.street_address, a.street_address_2,
-              a.city, a.postal_code, a.phone as address_phone
-       FROM subscriptions s
-       JOIN users u ON s.user_id = u.id
-       JOIN subscription_plans sp ON s.plan_id = sp.id
-       LEFT JOIN grind_types gt ON s.grind_type_id = gt.id
-       LEFT JOIN addresses a ON s.shipping_address_id = a.id
-       LEFT JOIN mexico_states ms ON a.state_id = ms.id
-       WHERE s.id = ?`,
-      [subscriptionId],
-    );
-
-    const subscription = subscriptions[0];
-
-    // Send confirmation email
-    if (subscription.shipping_address_id) {
-      const nextDeliveryDate = new Date(subscription.current_period_end);
-      const formattedDate = nextDeliveryDate.toLocaleDateString("es-MX", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-
-      await sendSubscriptionConfirmationEmail(
-        subscription.email,
-        subscription.full_name,
-        {
-          planName: subscription.plan_name,
-          weight: subscription.weight,
-          price: parseFloat(subscription.price_mxn).toFixed(2),
-          grindType: subscription.grind_type_name || "Grano Entero",
-          nextDelivery: formattedDate,
-          address: {
-            full_name: subscription.address_full_name,
-            street_address: subscription.street_address,
-            street_address_2: subscription.street_address_2,
-            city: subscription.city,
-            state: subscription.state_name,
-            postal_code: subscription.postal_code,
-            phone: subscription.address_phone,
-          },
-        },
-      );
-    }
+    const subscription = await persistNewSubscription({
+      userId,
+      user,
+      plan,
+      planId,
+      grindTypeId,
+      shippingAddressId,
+      stripeSubscription: resolved.subscription,
+      latestInvoice: resolved.invoice,
+    });
 
     trackVisit(req, "subscription_complete", "/subscription-wizard", {
       plan_id: planId,
@@ -2521,6 +2769,135 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Failed to create subscription",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+/**
+ * POST /api/subscriptions/finalize
+ * Complete DB setup after the client finishes 3DS for an incomplete subscription.
+ */
+const handleFinalizeSubscription: RequestHandler = async (req, res) => {
+  const userId = extractUserId(req, res);
+  if (!userId) return;
+
+  const { stripeSubscriptionId, planId, grindTypeId, address } = req.body;
+  if (!stripeSubscriptionId || !planId) {
+    return res.status(400).json({
+      success: false,
+      error: "stripeSubscriptionId and planId are required",
+    });
+  }
+
+  try {
+    const [users] = await pool.query<any[]>(
+      "SELECT * FROM users WHERE id = ? AND is_active = 1",
+      [userId],
+    );
+    if (users.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+    const user = users[0];
+
+    const [existing] = await pool.query<any[]>(
+      "SELECT id FROM subscriptions WHERE stripe_subscription_id = ?",
+      [stripeSubscriptionId],
+    );
+    if (existing.length > 0) {
+      return res.json({ success: true, subscriptionId: existing[0].id });
+    }
+
+    const stripeSubscription = await stripe.subscriptions.retrieve(
+      stripeSubscriptionId,
+      { expand: ["latest_invoice.payment_intent"] },
+    );
+
+    if (stripeSubscription.customer !== user.stripe_customer_id) {
+      return res.status(403).json({ error: "Subscription does not belong to user" });
+    }
+
+    if (
+      stripeSubscription.status !== "active" &&
+      stripeSubscription.status !== "trialing"
+    ) {
+      return res.status(402).json({
+        success: false,
+        error: "El pago aún no se ha completado. Intenta de nuevo.",
+        code: "payment_incomplete",
+      });
+    }
+
+    const [plans] = await pool.query<any[]>(
+      `SELECT *, ${stripePriceIdColumn()} as stripe_price_id FROM subscription_plans WHERE plan_id = ? AND is_active = 1`,
+      [planId],
+    );
+    if (plans.length === 0) {
+      return res.status(404).json({ error: "Plan no encontrado" });
+    }
+
+    let shippingAddressId: number | null = null;
+    if (address) {
+      const [existingAddresses] = await pool.query<any[]>(
+        `SELECT id FROM addresses 
+         WHERE user_id = ? AND street_address = ? AND city = ? AND state_id = ? AND postal_code = ?
+         LIMIT 1`,
+        [
+          userId,
+          address.street_address,
+          address.city,
+          address.state_id,
+          address.postal_code,
+        ],
+      );
+
+      if (existingAddresses.length > 0) {
+        shippingAddressId = existingAddresses[0].id;
+      } else {
+        const [addressResult] = await pool.query<any>(
+          `INSERT INTO addresses (user_id, full_name, street_address, street_address_2,
+            apartment_number, delivery_instructions, city, state_id, postal_code, country, phone, is_default)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            address.full_name,
+            address.street_address,
+            address.street_address_2 || null,
+            address.apartment_number || null,
+            address.delivery_instructions || null,
+            address.city,
+            parseInt(address.state_id),
+            address.postal_code,
+            address.country || "MX",
+            address.phone || null,
+            address.is_default || 0,
+          ],
+        );
+        shippingAddressId = addressResult.insertId;
+      }
+    }
+
+    const subscription = await persistNewSubscription({
+      userId,
+      user,
+      plan: plans[0],
+      planId,
+      grindTypeId,
+      shippingAddressId,
+      stripeSubscription,
+      latestInvoice: stripeSubscription.latest_invoice,
+    });
+
+    trackVisit(req, "subscription_complete", "/subscription-wizard", {
+      plan_id: planId,
+    });
+
+    res.json({ success: true, subscription });
+  } catch (error) {
+    console.error("Error finalizing subscription:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to finalize subscription",
       details: error instanceof Error ? error.message : "Unknown error",
     });
   }
@@ -4785,7 +5162,17 @@ function createServer() {
   );
 
   // Middleware
-  app.use(cors());
+  const corsOrigins = [
+    process.env.FRONTEND_URL,
+    ...(process.env.NODE_ENV !== "production"
+      ? ["http://localhost:8080"]
+      : []),
+  ].filter(Boolean) as string[];
+  app.use(
+    cors({
+      origin: corsOrigins.length > 0 ? corsOrigins : true,
+    }),
+  );
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -4851,6 +5238,7 @@ function createServer() {
     handleRemovePaymentMethod as RequestHandler,
   );
   app.post("/api/subscriptions", handleCreateSubscription);
+  app.post("/api/subscriptions/finalize", handleFinalizeSubscription);
 
   // Demo
   app.get("/api/demo", handleDemo);

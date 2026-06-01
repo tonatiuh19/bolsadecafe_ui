@@ -1165,6 +1165,7 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                   dispatch(
                     fetchPaymentMethods(subscription?.stripeSubscriptionId),
                   );
+                  return { type: "complete" as const };
                 }}
                 onError={(err) => {
                   logger.error("Add card error:", err);

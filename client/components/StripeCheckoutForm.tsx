@@ -25,15 +25,25 @@ const STRIPE_STYLE = {
 const fieldClass =
   "flex items-center gap-3 px-4 py-3.5 border-2 border-neutral-200 rounded-xl bg-white focus-within:border-brand-500 transition-colors";
 
+export type SubscriptionCheckoutResult =
+  | { type: "complete" }
+  | {
+      type: "requires_action";
+      clientSecret: string;
+      stripeSubscriptionId: string;
+    };
+
 interface StripeCheckoutFormProps {
   clientSecret: string;
-  onSuccess: (paymentMethodId: string) => Promise<void>;
+  onSuccess: (paymentMethodId: string) => Promise<SubscriptionCheckoutResult>;
+  onFinalize3DS?: (stripeSubscriptionId: string) => Promise<void>;
   onError: (error: string) => void;
 }
 
 export default function StripeCheckoutForm({
   clientSecret,
   onSuccess,
+  onFinalize3DS,
   onError,
 }: StripeCheckoutFormProps) {
   const stripe = useStripe();
@@ -64,8 +74,30 @@ export default function StripeCheckoutForm({
         );
         onError(error.message || "Error al guardar la tarjeta");
       } else if (setupIntent?.status === "succeeded") {
-        // Await so isProcessing stays true during subscription creation
-        await onSuccess(setupIntent.payment_method as string);
+        const result = await onSuccess(setupIntent.payment_method as string);
+
+        if (result.type === "requires_action") {
+          const { error: confirmError, paymentIntent } =
+            await stripe.confirmCardPayment(result.clientSecret);
+
+          if (confirmError) {
+            setErrorMessage(
+              confirmError.message ||
+                "Tu banco requiere autenticación adicional (3D Secure).",
+            );
+            onError(confirmError.message || "Error en autenticación 3D Secure");
+            return;
+          }
+
+          if (paymentIntent?.status !== "succeeded") {
+            const msg = "No se pudo completar la autenticación del pago.";
+            setErrorMessage(msg);
+            onError(msg);
+            return;
+          }
+
+          await onFinalize3DS?.(result.stripeSubscriptionId);
+        }
       }
     } catch (err: unknown) {
       const message =

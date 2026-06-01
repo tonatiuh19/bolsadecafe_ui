@@ -35,6 +35,7 @@ dist-ssr
 # Markdown files (except README and setup guides)
 *.md
 !README.md
+!docs/**/*.md
 !.github/copilot-instructions.md
 !.github/copilot-instructions-client-template.md
 !CLIENT_SETUP_GUIDE.md

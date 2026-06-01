@@ -1,7 +1,7 @@
 import { Helmet } from "react-helmet-async";
 
 const SITE_NAME = "Bolsadecafé";
-const SITE_URL = "https://bolsadecafe.com";
+const SITE_URL = "https://www.bolsadecafe.com";
 const FAVICON_URL =
   "https://disruptinglabs.com/data/bolsadecafe/assets/images/favicon.ico";
 const LOGO_URL =

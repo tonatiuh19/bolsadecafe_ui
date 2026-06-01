@@ -43,6 +43,7 @@ import { fetchHome } from "@/store/slices/homeSlice";
 import {
   createSetupIntent,
   createSubscription,
+  finalizeSubscription,
   selectClientSecret,
   selectPaymentLoading,
   selectPaymentError,
@@ -718,7 +719,7 @@ export default function SubscriptionWizard() {
                         </>
                       )}
 
-                      {/* DEV ONLY: Fill test data button */}
+                      {/* DEV ONLY: Fill test data button — stripped when NODE_ENV=production at build time */}
                       {import.meta.env.DEV && (
                         <button
                           type="button"
@@ -1096,7 +1097,73 @@ export default function SubscriptionWizard() {
                           <StripeCheckoutForm
                             clientSecret={clientSecret}
                             onSuccess={async (paymentMethodId) => {
-                              // Build address from wizard data
+                              const address =
+                                wizardData.recipientName &&
+                                wizardData.streetAddress &&
+                                wizardData.city &&
+                                wizardData.stateId &&
+                                wizardData.postalCode
+                                  ? {
+                                      full_name: wizardData.recipientName,
+                                      street_address: wizardData.streetAddress,
+                                      street_address_2:
+                                        wizardData.streetAddress2 || null,
+                                      apartment_number:
+                                        wizardData.apartmentNumber || null,
+                                      delivery_instructions:
+                                        wizardData.deliveryInstructions || null,
+                                      city: wizardData.city,
+                                      state_id: parseInt(wizardData.stateId),
+                                      postal_code: wizardData.postalCode,
+                                      phone: wizardData.recipientPhone || null,
+                                      country: "MX",
+                                      is_default: 1,
+                                    }
+                                  : null;
+
+                              const subscriptionPayload = {
+                                paymentMethodId,
+                                planId: wizardData.selectedPlan?.id || "",
+                                grindTypeId: wizardData.grind || undefined,
+                                address,
+                              };
+
+                              const result = await dispatch(
+                                createSubscription(subscriptionPayload),
+                              );
+
+                              if (createSubscription.rejected.match(result)) {
+                                const errPayload = result.payload as any;
+                                throw new Error(
+                                  errPayload?.error ||
+                                    "Error al crear la suscripción",
+                                );
+                              }
+
+                              const payload = result.payload as any;
+                              if (payload?.requiresAction) {
+                                return {
+                                  type: "requires_action" as const,
+                                  clientSecret: payload.clientSecret,
+                                  stripeSubscriptionId: payload.stripeSubscriptionId,
+                                };
+                              }
+
+                              if (!payload?.success) {
+                                throw new Error(
+                                  payload?.error ||
+                                    "Error al crear la suscripción",
+                                );
+                              }
+
+                              navigate(
+                                `/subscription/success?plan_id=${
+                                  wizardData.selectedPlan?.id || ""
+                                }${wizardData.grind ? `&grind_type_id=${wizardData.grind}` : ""}`,
+                              );
+                              return { type: "complete" as const };
+                            }}
+                            onFinalize3DS={async (stripeSubscriptionId) => {
                               const address =
                                 wizardData.recipientName &&
                                 wizardData.streetAddress &&
@@ -1122,41 +1189,27 @@ export default function SubscriptionWizard() {
                                   : null;
 
                               const result = await dispatch(
-                                createSubscription({
-                                  paymentMethodId,
+                                finalizeSubscription({
+                                  stripeSubscriptionId,
                                   planId: wizardData.selectedPlan?.id || "",
                                   grindTypeId: wizardData.grind || undefined,
                                   address,
                                 }),
                               );
 
-                              if (createSubscription.fulfilled.match(result)) {
-                                const payload = result.payload as any;
-                                if (payload?.requiresAction) {
-                                  throw new Error(
-                                    "Tu banco requiere autenticación adicional (3D Secure). Por favor intenta con otra tarjeta o contacta a tu banco.",
-                                  );
-                                }
-                                if (!payload?.success) {
-                                  throw new Error(
-                                    payload?.error ||
-                                      "Error al crear la suscripción",
-                                  );
-                                }
-                                navigate(
-                                  `/subscription/success?plan_id=${
-                                    wizardData.selectedPlan?.id || ""
-                                  }${wizardData.grind ? `&grind_type_id=${wizardData.grind}` : ""}`,
-                                );
-                              } else {
-                                // Thunk was rejected — surface the API error message
+                              if (finalizeSubscription.rejected.match(result)) {
                                 const errPayload = result.payload as any;
                                 throw new Error(
                                   errPayload?.error ||
-                                    (result as any).error?.message ||
-                                    "Error al crear la suscripción",
+                                    "Error al finalizar la suscripción",
                                 );
                               }
+
+                              navigate(
+                                `/subscription/success?plan_id=${
+                                  wizardData.selectedPlan?.id || ""
+                                }${wizardData.grind ? `&grind_type_id=${wizardData.grind}` : ""}`,
+                              );
                             }}
                             onError={(error) => {
                               console.error(

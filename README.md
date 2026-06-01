@@ -57,15 +57,13 @@ DB_PASSWORD=your_db_password
 DB_NAME=your_db_name
 DB_SSL=false
 
-# Stripe keys
+# Stripe keys (server runtime + client build)
 STRIPE_SECRET_KEY=sk_test_...
-STRIPE_PUBLISHABLE_KEY=pk_test_...
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 
-# Stripe Price IDs for subscription plans
-STRIPE_PRICE_250GR=price_...
-STRIPE_PRICE_500GR=price_...
-STRIPE_PRICE_1KG=price_...
+# Public site URL (emails, Stripe portal, CORS)
+FRONTEND_URL=https://www.bolsadecafe.com
 ```
 
 3. **Setup MySQL Database**:
@@ -153,9 +151,11 @@ In your Vercel project settings, add all environment variables from `.env`:
 
 4. **Setup Stripe Webhooks**:
 
-See **[docs/stripe-webhooks.md](docs/stripe-webhooks.md)** for full development (Stripe CLI) and production (Vercel) setup.
+See **[docs/stripe-webhook-setup.md](docs/stripe-webhook-setup.md)** for full development (Stripe CLI) and production setup.
 
-Quick reference — endpoint: `https://your-domain.vercel.app/api/webhook`
+For the complete go-live checklist, see **[docs/production-rollout.md](docs/production-rollout.md)**.
+
+Quick reference — production endpoint: `https://www.bolsadecafe.com/api/webhook`
 
 Events to enable:
 
