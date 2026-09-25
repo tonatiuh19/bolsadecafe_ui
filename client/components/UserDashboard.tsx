@@ -78,6 +78,14 @@ import StripeCheckoutForm from "@/components/StripeCheckoutForm";
 import { fetchStates } from "@/store/slices/statesSlice";
 import { fetchPlans } from "@/store/slices/plansSlice";
 import {
+  isValidPostalCode,
+  postalCodeErrorMessage,
+  postalCodeLabel,
+  postalCodeMaxLength,
+  postalCodePlaceholder,
+  type ShippingCountryCode,
+} from "@shared/address";
+import {
   FaCcVisa,
   FaCcMastercard,
   FaCcAmex,
@@ -271,11 +279,24 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
   useEffect(() => {
     if (open) {
       dispatch(fetchMySubscription());
-      dispatch(fetchStates());
       dispatch(fetchPlans());
       // Payment methods are fetched once subscriptions load — see below
     }
   }, [open, dispatch]);
+
+  const shippingCountry: ShippingCountryCode =
+    subscription?.shippingCountry === "US" ||
+    subscription?.shippingAddress?.country === "US"
+      ? "US"
+      : "MX";
+  const isUS = shippingCountry === "US";
+
+  // Load the correct state list for the managed subscription country
+  useEffect(() => {
+    if (open && subscription) {
+      dispatch(fetchStates(shippingCountry));
+    }
+  }, [open, subscription?.id, shippingCountry, dispatch]);
 
   // Re-fetch payment methods scoped to the active subscription whenever it changes
   useEffect(() => {
@@ -307,6 +328,7 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
         subscription?.shippingAddress?.deliveryInstructions ?? "",
       city: subscription?.shippingAddress?.city ?? "",
       stateId: subscription?.shippingAddress?.stateId?.toString() ?? "",
+      stateCode: subscription?.shippingAddress?.stateCode ?? "",
       postalCode: subscription?.shippingAddress?.postalCode ?? "",
       phone: subscription?.shippingAddress?.phone ?? "",
     },
@@ -314,10 +336,20 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
       fullName: Yup.string().required("Nombre requerido"),
       streetAddress: Yup.string().required("Dirección requerida"),
       city: Yup.string().required("Ciudad requerida"),
-      stateId: Yup.string().required("Estado requerido"),
+      ...(isUS
+        ? {
+            stateCode: Yup.string().required("Estado requerido"),
+          }
+        : {
+            stateId: Yup.string().required("Estado requerido"),
+          }),
       postalCode: Yup.string()
-        .matches(/^\d{5}$/, "Código postal de 5 dígitos")
-        .required("Código postal requerido"),
+        .required(isUS ? "ZIP requerido" : "Código postal requerido")
+        .test(
+          "postal-format",
+          postalCodeErrorMessage(shippingCountry),
+          (value) => isValidPostalCode(shippingCountry, value),
+        ),
     }),
     onSubmit: (values) => {
       if (!subscription) return;
@@ -330,7 +362,9 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
           apartmentNumber: values.apartmentNumber || undefined,
           deliveryInstructions: values.deliveryInstructions || undefined,
           city: values.city,
-          stateId: Number(values.stateId),
+          stateId: isUS ? null : Number(values.stateId),
+          stateCode: isUS ? values.stateCode : null,
+          country: shippingCountry,
           postalCode: values.postalCode,
           phone: values.phone || undefined,
         }),
@@ -555,7 +589,10 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                           <p className="text-white font-bold text-xl">
                             ${subscription.planPrice.toLocaleString("es-MX")}
                           </p>
-                          <p className="text-brand-200 text-xs">MXN / mes</p>
+                          <p className="text-brand-200 text-xs">
+                            MXN / mes
+                            {isUS ? " · EE.UU." : ""}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -826,9 +863,11 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                     </div>
                     <p className="font-bold text-brand-700">
                       $
-                      {Number(plan.price_mxn ?? plan.price).toLocaleString(
-                        "es-MX",
-                      )}
+                      {Number(
+                        isUS
+                          ? (plan.price_mxn_us ?? plan.price_mxn ?? plan.price)
+                          : (plan.price_mxn ?? plan.price),
+                      ).toLocaleString("es-MX")}
                       <span className="text-xs font-normal text-neutral-400">
                         /mes
                       </span>
@@ -890,7 +929,9 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                 <Label>Calle y número</Label>
                 <Input
                   {...addressForm.getFieldProps("streetAddress")}
-                  placeholder="Ej: Av. Insurgentes 123"
+                  placeholder={
+                    isUS ? "Ej: 123 Main St" : "Ej: Av. Insurgentes 123"
+                  }
                 />
                 {addressForm.touched.streetAddress &&
                   addressForm.errors.streetAddress && (
@@ -901,29 +942,37 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
               </div>
               <div className="col-span-2">
                 <Label>
-                  Colonia / Municipio{" "}
+                  {isUS ? "Apt / Suite / Unit" : "Colonia / Municipio"}{" "}
                   <span className="text-neutral-400">(opcional)</span>
                 </Label>
                 <Input
                   {...addressForm.getFieldProps("streetAddress2")}
-                  placeholder="Colonia, delegación, etc."
+                  placeholder={
+                    isUS
+                      ? "Ej: Apt 4B, Suite 200..."
+                      : "Colonia, delegación, etc."
+                  }
                 />
               </div>
               <div className="col-span-2">
                 <Label>
-                  Departamento / Interior{" "}
+                  {isUS ? "Apartment / Floor" : "Departamento / Interior"}{" "}
                   <span className="text-neutral-400">(opcional)</span>
                 </Label>
                 <Input
                   {...addressForm.getFieldProps("apartmentNumber")}
-                  placeholder="Depto 4B, Piso 3, Interior 201..."
+                  placeholder={
+                    isUS
+                      ? "Ej: Floor 3, Unit 201..."
+                      : "Depto 4B, Piso 3, Interior 201..."
+                  }
                 />
               </div>
               <div>
                 <Label>Ciudad</Label>
                 <Input
                   {...addressForm.getFieldProps("city")}
-                  placeholder="Ciudad"
+                  placeholder={isUS ? "Ej: Austin" : "Ej: Ciudad de México"}
                 />
                 {addressForm.touched.city && addressForm.errors.city && (
                   <p className="text-xs text-red-500 mt-1">
@@ -932,11 +981,11 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                 )}
               </div>
               <div>
-                <Label>Código Postal</Label>
+                <Label>{postalCodeLabel(shippingCountry)}</Label>
                 <Input
                   {...addressForm.getFieldProps("postalCode")}
-                  placeholder="12345"
-                  maxLength={5}
+                  placeholder={postalCodePlaceholder(shippingCountry)}
+                  maxLength={postalCodeMaxLength(shippingCountry)}
                 />
                 {addressForm.touched.postalCode &&
                   addressForm.errors.postalCode && (
@@ -946,27 +995,47 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                   )}
               </div>
               <div className="col-span-2">
-                <Label>Estado</Label>
+                <Label>{isUS ? "State" : "Estado"}</Label>
                 <Select
-                  value={addressForm.values.stateId}
-                  onValueChange={(v) => addressForm.setFieldValue("stateId", v)}
+                  value={isUS ? addressForm.values.stateCode : addressForm.values.stateId}
+                  onValueChange={(v) =>
+                    addressForm.setFieldValue(
+                      isUS ? "stateCode" : "stateId",
+                      v,
+                    )
+                  }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona estado" />
+                    <SelectValue
+                      placeholder={
+                        isUS ? "Select state" : "Selecciona estado"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent className="max-h-60">
                     {states.map((s) => (
-                      <SelectItem key={s.id} value={s.id.toString()}>
+                      <SelectItem
+                        key={s.id}
+                        value={isUS ? s.code : s.id.toString()}
+                      >
                         {s.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {addressForm.touched.stateId && addressForm.errors.stateId && (
-                  <p className="text-xs text-red-500 mt-1">
-                    {addressForm.errors.stateId}
-                  </p>
-                )}
+                {isUS
+                  ? addressForm.touched.stateCode &&
+                    addressForm.errors.stateCode && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {addressForm.errors.stateCode}
+                      </p>
+                    )
+                  : addressForm.touched.stateId &&
+                    addressForm.errors.stateId && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {addressForm.errors.stateId}
+                      </p>
+                    )}
               </div>
               <div className="col-span-2">
                 <Label>
@@ -974,7 +1043,9 @@ export default function UserDashboard({ open, onClose }: UserDashboardProps) {
                 </Label>
                 <Input
                   {...addressForm.getFieldProps("phone")}
-                  placeholder="+52 555 000 0000"
+                  placeholder={
+                    isUS ? "+1 512 555 0100" : "+52 555 000 0000"
+                  }
                 />
               </div>
               <div className="col-span-2">

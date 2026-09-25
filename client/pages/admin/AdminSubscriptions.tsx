@@ -210,6 +210,10 @@ function OrderCard({
               <span className="text-xs text-muted-foreground truncate">
                 {order.addressCity}
                 {order.addressState ? `, ${order.addressState}` : ""}
+                {order.addressCountry === "US" ||
+                order.shippingCountry === "US"
+                  ? " · EE.UU."
+                  : ""}
               </span>
             </div>
           )}
@@ -303,6 +307,9 @@ function SubscriptionRow({
         <p className="text-sm">
           {sub.shippingCity ? `${sub.shippingCity}, ${sub.shippingState}` : "—"}
         </p>
+        {sub.shippingCountry === "US" && (
+          <p className="text-xs text-muted-foreground mt-0.5">EE.UU.</p>
+        )}
       </td>
       <td className="px-4 py-3 hidden lg:table-cell text-sm text-muted-foreground">
         {fmt(sub.currentPeriodEnd)}

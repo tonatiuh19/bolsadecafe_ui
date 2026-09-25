@@ -56,6 +56,8 @@ import { fetchHome } from "@/store/slices/homeSlice";
 import BusinessContactModal from "@/components/BusinessContactModal";
 import UserDashboard from "@/components/UserDashboard";
 import AuthModal from "@/components/AuthModal";
+import LanguageToggle from "@/components/LanguageToggle";
+import { useTranslation } from "react-i18next";
 
 /* ─── types ───────────────────────────────────────────── */
 interface SubscriptionPlan {
@@ -81,30 +83,6 @@ function estimateReadTime(content: string): string {
     .filter(Boolean).length;
   return `${Math.max(1, Math.round(words / 200))} min`;
 }
-
-/* ─── FAQ data ─────────────────────────────────────────── */
-const faqs = [
-  {
-    q: "¿Qué es la suscripción de Bolsadecafé?",
-    a: "Es un servicio de entrega mensual que trae café mexicano premium, recién tostado, directamente a tu hogar u oficina.",
-  },
-  {
-    q: "¿Qué incluye la suscripción?",
-    a: "Según tu plan recibirás entre 250gr y 1kg de café — siempre fresco, siempre delicioso — con envío gratis en toda la República.",
-  },
-  {
-    q: "¿Puedo cambiar mi preferencia de molido o dirección?",
-    a: "¡Sí! Puedes actualizar tus preferencias en cualquier momento desde tu perfil.",
-  },
-  {
-    q: "¿Cómo cancelo mi suscripción?",
-    a: "Puedes cancelar fácilmente cuando quieras, sin contratos ni cargos ocultos.",
-  },
-  {
-    q: "¿El café siempre llega fresco?",
-    a: "Tostamos en lotes pequeños justo antes de cada envío para garantizar la máxima frescura.",
-  },
-];
 
 /* ─── useReveal hook ───────────────────────────────────── */
 function useReveal() {
@@ -206,6 +184,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 export default function Index() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const { t, i18n } = useTranslation();
   const [businessModalOpen, setBusinessModalOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -213,6 +192,75 @@ export default function Index() {
   const [scrolled, setScrolled] = useState(false);
   const [statsVisible, setStatsVisible] = useState(false);
   const statsRef = useRef<HTMLDivElement>(null);
+
+  const faqs = (t("home.faqs", { returnObjects: true }) as Array<{
+    q: string;
+    a: string;
+  }>) || [];
+
+  const navLinks: [string, string][] = [
+    ["inicio", t("nav.home")],
+    ["planes", t("nav.plans")],
+    ["envios-eeuu", t("nav.usShipping")],
+    ["como-funciona", t("nav.howItWorks")],
+    ["preguntas", t("nav.faq")],
+  ];
+
+  const whyItems = [
+    {
+      icon: Leaf,
+      title: t("home.why.roastTitle"),
+      desc: t("home.why.roastDesc"),
+    },
+    {
+      icon: Truck,
+      title: t("home.why.shipTitle"),
+      desc: t("home.why.shipDesc"),
+    },
+    {
+      icon: Heart,
+      title: t("home.why.localTitle"),
+      desc: t("home.why.localDesc"),
+    },
+    {
+      icon: Package,
+      title: t("home.why.flexTitle"),
+      desc: t("home.why.flexDesc"),
+    },
+    {
+      icon: Zap,
+      title: t("home.why.customTitle"),
+      desc: t("home.why.customDesc"),
+    },
+    {
+      icon: Star,
+      title: t("home.why.qualityTitle"),
+      desc: t("home.why.qualityDesc"),
+    },
+  ];
+
+  const howSteps = [
+    {
+      n: "01",
+      icon: Coffee,
+      title: t("home.how.step1Title"),
+      desc: t("home.how.step1Desc"),
+    },
+    {
+      n: "02",
+      icon: MapPin,
+      title: t("home.how.step2Title"),
+      desc: t("home.how.step2Desc"),
+    },
+    {
+      n: "03",
+      icon: Package,
+      title: t("home.how.step3Title"),
+      desc: t("home.how.step3Desc"),
+    },
+  ];
+
+  const dateLocale = i18n.language?.startsWith("en") ? "en-US" : "es-MX";
 
   const apiPlans = useAppSelector(selectPlans);
   const plansLoading = useAppSelector(selectPlansLoading);
@@ -427,12 +475,7 @@ export default function Index() {
             <nav
               className={`hidden md:flex items-center gap-6 transition-all duration-300 ${scrolled ? "opacity-100" : "opacity-0 pointer-events-none"}`}
             >
-              {[
-                ["inicio", "Inicio"],
-                ["planes", "Planes"],
-                ["como-funciona", "Cómo Funciona"],
-                ["preguntas", "FAQ"],
-              ].map(([id, label]) => (
+              {navLinks.map(([id, label]) => (
                 <button
                   key={id}
                   onClick={() => scrollTo(id)}
@@ -445,7 +488,7 @@ export default function Index() {
                 onClick={() => navigate("/blog")}
                 className={`text-sm font-medium transition-colors hover:opacity-100 ${scrolled ? "text-neutral-600 hover:text-brand-800" : "text-white/80 hover:text-white"}`}
               >
-                Blog
+                {t("nav.blog")}
               </button>
             </nav>
 
@@ -453,6 +496,7 @@ export default function Index() {
             <div
               className={`hidden md:flex items-center gap-2 transition-opacity duration-300 ${scrolled ? "opacity-100" : "opacity-0"}`}
             >
+              <LanguageToggle />
               {isAuthenticated && user ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -480,7 +524,7 @@ export default function Index() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => setDashboardOpen(true)}>
                       <Package className="mr-2 h-4 w-4" />
-                      Mi Suscripción
+                      {t("nav.mySubscription")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -488,7 +532,7 @@ export default function Index() {
                       onClick={handleLogout}
                     >
                       <LogOut className="mr-2 h-4 w-4" />
-                      Cerrar Sesión
+                      {t("nav.logout")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -501,14 +545,14 @@ export default function Index() {
                     className={`gap-1.5 ${scrolled ? "text-neutral-700 hover:bg-neutral-100" : "text-white hover:bg-white/10"}`}
                   >
                     <LogIn className="h-4 w-4" />
-                    Ingresar
+                    {t("nav.login")}
                   </Button>
                   <Button
                     size="sm"
                     onClick={() => scrollTo("planes")}
                     className="bg-brand-700 hover:bg-brand-800 text-white shadow-md"
                   >
-                    Suscribirme
+                    {t("nav.subscribe")}
                   </Button>
                 </>
               )}
@@ -517,7 +561,9 @@ export default function Index() {
             {/* Mobile hamburger — always tappable (was hidden on hero) */}
             <button
               type="button"
-              aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+              aria-label={
+                mobileOpen ? t("nav.closeMenu") : t("nav.openMenu")
+              }
               aria-expanded={mobileOpen}
               className={`md:hidden p-2.5 -mr-1 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${
                 solidHeader
@@ -540,12 +586,7 @@ export default function Index() {
           className={`md:hidden overflow-hidden transition-all duration-300 ${mobileOpen ? "max-h-[28rem]" : "max-h-0"} bg-white border-t border-neutral-100`}
         >
           <div className="px-4 py-3 space-y-1 max-h-[70vh] overflow-y-auto">
-            {[
-              ["inicio", "Inicio"],
-              ["planes", "Planes"],
-              ["como-funciona", "Cómo Funciona"],
-              ["preguntas", "FAQ"],
-            ].map(([id, label]) => (
+            {navLinks.map(([id, label]) => (
               <button
                 key={id}
                 onClick={() => scrollTo(id)}
@@ -561,8 +602,11 @@ export default function Index() {
               }}
               className="w-full text-left px-3 py-3 rounded-lg text-sm font-medium text-neutral-700 hover:bg-brand-50 hover:text-brand-800 transition-colors min-h-[44px]"
             >
-              Blog
+              {t("nav.blog")}
             </button>
+            <div className="px-3 py-2">
+              <LanguageToggle />
+            </div>
             <div className="pt-2 pb-1 border-t border-neutral-100 flex flex-col gap-2">
               {isAuthenticated && user ? (
                 <>
@@ -576,7 +620,7 @@ export default function Index() {
                     }}
                   >
                     <Package className="mr-2 h-4 w-4" />
-                    Mi Suscripción
+                    {t("nav.mySubscription")}
                   </Button>
                   <Button
                     variant="outline"
@@ -588,7 +632,7 @@ export default function Index() {
                     }}
                   >
                     <LogOut className="mr-2 h-4 w-4" />
-                    Cerrar Sesión
+                    {t("nav.logout")}
                   </Button>
                 </>
               ) : (
@@ -602,14 +646,14 @@ export default function Index() {
                       setMobileOpen(false);
                     }}
                   >
-                    Ingresar
+                    {t("nav.login")}
                   </Button>
                   <Button
                     size="sm"
                     onClick={() => scrollTo("planes")}
                     className="w-full text-sm bg-brand-700 text-white min-h-[44px]"
                   >
-                    Suscribirme
+                    {t("nav.subscribe")}
                   </Button>
                 </>
               )}
@@ -650,25 +694,24 @@ export default function Index() {
             <div className="animate-fadeUp flex items-center gap-3 mb-6">
               <div className="h-px w-10 bg-brand-400" />
               <span className="text-brand-300 text-xs font-semibold uppercase tracking-[0.2em]">
-                Café de especialidad mexicano
+                {t("home.heroEyebrow")}
               </span>
             </div>
 
             {/* Headline */}
             <h1 className="animate-fadeUp-d1 text-4xl sm:text-6xl lg:text-[5.5rem] font-black text-white leading-[1.05] tracking-tight mb-6">
-              El café
+              {t("home.heroTitle1")}
               <br />
               <span className="italic font-light text-brand-200">
-                que mereces,
+                {t("home.heroTitle2")}
               </span>
               <br />
-              en tu puerta.
+              {t("home.heroTitle3")}
             </h1>
 
             {/* Body */}
             <p className="animate-fadeUp-d2 text-base sm:text-lg text-white/65 max-w-lg mb-10 leading-relaxed">
-              Tostado artesanalmente en lotes pequeños, seleccionado por
-              expertos y entregado directo del productor a tu hogar.
+              {t("home.heroBody")}
             </p>
 
             {/* CTAs */}
@@ -678,22 +721,22 @@ export default function Index() {
                 onClick={() => scrollTo("planes")}
                 className="w-full sm:w-auto bg-white hover:bg-neutral-100 text-brand-900 px-6 sm:px-8 py-5 sm:py-6 text-sm font-bold rounded-xl shadow-2xl tracking-wide min-h-[48px]"
               >
-                Ver Planes de Suscripción
+                {t("home.heroCtaPrimary")}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <button
                 onClick={() => scrollTo("como-funciona")}
                 className="w-full sm:w-auto flex items-center justify-center sm:justify-start gap-2 border border-white/25 hover:border-white/50 text-white/80 hover:text-white px-6 sm:px-8 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 backdrop-blur-sm min-h-[48px]"
               >
-                Cómo funciona
+                {t("home.heroCtaSecondary")}
               </button>
             </div>
 
             {/* Trust indicators */}
             <div className="animate-fadeUp-d2 flex flex-wrap items-center gap-5 mt-10">
               {[
-                { icon: Leaf, label: "100% mexicano" },
-                { icon: Truck, label: "Envío gratis" },
+                { icon: Leaf, label: t("home.trustMx") },
+                { icon: Truck, label: t("home.trustMxUs") },
               ].map(({ icon: Icon, label }) => (
                 <div
                   key={label}
@@ -716,31 +759,63 @@ export default function Index() {
         </div>
       </section>
 
+      {/* ── US SHIPPING ─────────────────────────────────── */}
+      <section
+        id="envios-eeuu"
+        className="py-16 sm:py-20 bg-gradient-to-b from-white to-brand-50/40 border-y border-brand-100"
+      >
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center sm:text-left">
+          <p className="text-brand-700 text-sm font-semibold tracking-wide uppercase mb-3">
+            {t("home.usBadge")}
+          </p>
+          <h2 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-4">
+            {t("home.usTitle")}
+          </h2>
+          <p className="text-neutral-600 text-base leading-relaxed mb-6 max-w-2xl mx-auto sm:mx-0">
+            {t("home.usBody")}
+          </p>
+          <ul className="space-y-2 text-sm text-neutral-700 mb-8 inline-block text-left">
+            <li>• {t("home.usBullet1")}</li>
+            <li>• {t("home.usBullet2")}</li>
+            <li>• {t("home.usBullet3")}</li>
+          </ul>
+          <div>
+            <Button
+              onClick={() => navigate("/subscription-wizard")}
+              className="bg-brand-700 hover:bg-brand-800 text-white"
+            >
+              {t("home.usCta")}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </section>
+
       {/* ── STATS BAR ───────────────────────────────────── */}
       <div ref={statsRef} className="bg-brand-800 py-10 sm:py-12">
         <div className="max-w-5xl mx-auto px-4 grid grid-cols-2 sm:grid-cols-4 gap-8">
           <StatCard
             value={1200}
             suffix="+"
-            label="Suscriptores felices"
+            label={t("home.statSubscribers")}
             started={statsVisible}
           />
           <StatCard
             value={8}
             suffix=""
-            label="Regiones productoras"
+            label={t("home.statRegions")}
             started={statsVisible}
           />
           <StatCard
             value={3}
             suffix=""
-            label="Planes disponibles"
+            label={t("home.statPlans")}
             started={statsVisible}
           />
           <StatCard
             value={100}
             suffix="%"
-            label="Café mexicano"
+            label={t("home.statMexican")}
             started={statsVisible}
           />
         </div>
@@ -753,50 +828,19 @@ export default function Index() {
             <div className="flex items-center gap-3 mb-5">
               <div className="h-px w-8 bg-brand-600" />
               <span className="text-brand-600 text-xs font-semibold uppercase tracking-[0.18em]">
-                Por qué elegirnos
+                {t("home.whyEyebrow")}
               </span>
             </div>
             <h2 className="text-3xl sm:text-5xl font-black text-neutral-900 leading-tight">
-              Diferente desde
+              {t("home.whyTitle1")}
               <br />
               <span className="text-brand-600 font-light italic">
-                el primer sorbo.
+                {t("home.whyTitle2")}
               </span>
             </h2>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              {
-                icon: Leaf,
-                title: "Recién Tostado",
-                desc: "Tostamos en lotes pequeños justo antes de cada envío. Nunca recibirás café de semanas atrás.",
-              },
-              {
-                icon: Truck,
-                title: "Envío Gratis",
-                desc: "Entregamos en toda la República Mexicana sin costo adicional, directo a tu puerta.",
-              },
-              {
-                icon: Heart,
-                title: "Apoya lo Local",
-                desc: "Trabajamos con productores locales apasionados de Oaxaca, Chiapas, Veracruz y más.",
-              },
-              {
-                icon: Package,
-                title: "Sin Compromiso",
-                desc: "Sin contratos ni letras pequeñas. Cancela, pausa o modifica cuando quieras.",
-              },
-              {
-                icon: Zap,
-                title: "A Tu Medida",
-                desc: "Grano entero, molido grueso, medio o fino. Tu café, a tu manera.",
-              },
-              {
-                icon: Star,
-                title: "Calidad Premium",
-                desc: "Sólo seleccionamos cafés con más de 80 puntos en la escala de calidad de la SCA.",
-              },
-            ].map(({ icon: Icon, title, desc }, i) => (
+            {whyItems.map(({ icon: Icon, title, desc }, i) => (
               <div
                 key={i}
                 style={{ animationDelay: `${i * 0.08}s` }}
@@ -828,22 +872,21 @@ export default function Index() {
             <div className="flex items-center gap-3 mb-5">
               <div className="h-px w-8 bg-brand-600" />
               <span className="text-brand-600 text-xs font-semibold uppercase tracking-[0.18em]">
-                Suscripciones
+                {t("home.plansEyebrow")}
               </span>
               {plansLoading && (
                 <Loader2 className="h-3 w-3 animate-spin text-brand-500 ml-1" />
               )}
             </div>
             <h2 className="text-3xl sm:text-5xl font-black text-neutral-900 leading-tight">
-              Elige tu plan.
+              {t("home.plansTitle1")}
               <br />
               <span className="text-brand-700 font-light italic">
-                Sin compromisos.
+                {t("home.plansTitle2")}
               </span>
             </h2>
             <p className="mt-4 text-neutral-500 max-w-md text-sm leading-relaxed">
-              Cancela, pausa o modifica cuando quieras. Sin contratos ni letras
-              chicas.
+              {t("home.plansSubtitle")}
             </p>
           </div>
 
@@ -882,7 +925,7 @@ export default function Index() {
                               : "bg-neutral-100 text-neutral-500 border border-neutral-200"
                           }`}
                         >
-                          {isPopular ? "Más Popular" : plan.badge}
+                          {isPopular ? t("home.plansPopular") : plan.badge}
                         </span>
                       )}
                     </div>
@@ -892,7 +935,7 @@ export default function Index() {
                       {plan.name}
                     </h3>
                     <p className="text-xs mb-6 text-neutral-400">
-                      {plan.weight} de café premium · por mes
+                      {plan.weight} {t("home.plansPerMonth")}
                     </p>
 
                     {/* Price block */}
@@ -902,7 +945,7 @@ export default function Index() {
                           ${plan.price}
                         </span>
                         <span className="text-sm text-neutral-400">
-                          MXN/mes
+                          {t("home.plansMxnMonth")}
                         </span>
                       </div>
                     </div>
@@ -930,7 +973,7 @@ export default function Index() {
                           : "bg-white hover:bg-brand-700 border-2 border-neutral-200 hover:border-brand-700 text-neutral-700 hover:text-white"
                       }`}
                     >
-                      Suscribirme Ahora
+                      {t("home.plansCta")}
                       <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                     </Button>
                   </div>
@@ -955,9 +998,9 @@ export default function Index() {
                   </p>
                   <div className="flex flex-wrap gap-4 mt-3">
                     {[
-                      "Cantidades personalizadas",
-                      "Facturación empresarial",
-                      "Envío gratis",
+                      t("home.businessFeatures.custom"),
+                      t("home.businessFeatures.billing"),
+                      t("home.businessFeatures.shipping"),
                     ].map((f) => (
                       <span
                         key={f}
@@ -974,7 +1017,7 @@ export default function Index() {
                 onClick={() => setBusinessModalOpen(true)}
                 className="flex-shrink-0 bg-brand-700 hover:bg-brand-800 text-white px-7 py-5 rounded-xl font-semibold shadow-md"
               >
-                Contactar
+                {t("home.businessContact")}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
@@ -990,14 +1033,14 @@ export default function Index() {
               <div className="flex items-center gap-3 mb-5">
                 <div className="h-px w-8 bg-brand-600" />
                 <span className="text-brand-600 text-xs font-semibold uppercase tracking-[0.18em]">
-                  Nuestro Blog
+                  {t("home.blogEyebrow")}
                 </span>
               </div>
               <h2 className="text-3xl sm:text-5xl font-black text-neutral-900 leading-tight">
-                Artículos
+                {t("home.blogTitle1")}
                 <br />
                 <span className="text-brand-600 font-light italic">
-                  & guías.
+                  {t("home.blogTitle2")}
                 </span>
               </h2>
             </div>
@@ -1005,7 +1048,7 @@ export default function Index() {
               onClick={() => navigate("/blog")}
               className="flex items-center gap-2 text-sm text-neutral-400 hover:text-brand-700 transition-colors mb-1"
             >
-              Ver todos
+              {t("home.blogSeeAll")}
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
@@ -1068,7 +1111,7 @@ export default function Index() {
                       <span>
                         {a.published_at
                           ? new Date(a.published_at).toLocaleDateString(
-                              "es-MX",
+                              dateLocale,
                               {
                                 day: "2-digit",
                                 month: "short",
@@ -1097,40 +1140,20 @@ export default function Index() {
             <div className="flex items-center gap-3 mb-5">
               <div className="h-px w-8 bg-brand-500" />
               <span className="text-brand-400 text-xs font-semibold uppercase tracking-[0.18em]">
-                El proceso
+                {t("home.howEyebrow")}
               </span>
             </div>
             <h2 className="text-3xl sm:text-5xl font-black text-white leading-tight">
-              Tan fácil como
+              {t("home.howTitle1")}
               <br />
               <span className="text-brand-300 font-light italic">
-                tres pasos.
+                {t("home.howTitle2")}
               </span>
             </h2>
           </div>
           <div className="grid sm:grid-cols-3 gap-6 relative">
-            {/* connecting line on desktop */}
             <div className="hidden sm:block absolute top-8 left-[16.67%] right-[16.67%] h-px bg-gradient-to-r from-brand-800 via-brand-600 to-brand-800" />
-            {[
-              {
-                n: "01",
-                icon: Coffee,
-                title: "Elige tu molido",
-                desc: "Grano entero, molido grueso, medio o fino. Selecciona lo que mejor se adapte a tu método de preparación.",
-              },
-              {
-                n: "02",
-                icon: MapPin,
-                title: "Tu dirección",
-                desc: "Indica dónde entregaremos tu café. Enviamos a toda la República Mexicana sin costo adicional.",
-              },
-              {
-                n: "03",
-                icon: Package,
-                title: "¡Disfruta!",
-                desc: "Recibe tu café recién tostado cada mes. Cancela o modifica en cualquier momento.",
-              },
-            ].map(({ n, icon: Icon, title, desc }, i) => (
+            {howSteps.map(({ n, icon: Icon, title, desc }, i) => (
               <div
                 key={i}
                 style={{ animationDelay: `${i * 0.12}s` }}
@@ -1161,14 +1184,14 @@ export default function Index() {
             <div className="flex items-center gap-3 mb-5">
               <div className="h-px w-8 bg-brand-600" />
               <span className="text-brand-600 text-xs font-semibold uppercase tracking-[0.18em]">
-                FAQ
+                {t("home.faqEyebrow")}
               </span>
             </div>
             <h2 className="text-3xl sm:text-5xl font-black text-neutral-900 leading-tight">
-              Preguntas
+              {t("home.faqTitle1")}
               <br />
               <span className="text-brand-600 font-light italic">
-                frecuentes.
+                {t("home.faqTitle2")}
               </span>
             </h2>
           </div>
@@ -1192,20 +1215,19 @@ export default function Index() {
         </div>
         <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 text-center">
           <h2 className="text-3xl sm:text-5xl font-black text-white mb-4 leading-tight">
-            ¿Listo para tu ritual
+            {t("home.ctaTitle1")}
             <br />
-            del café?
+            {t("home.ctaTitle2")}
           </h2>
           <p className="text-white/70 text-lg mb-8">
-            Únete a más de 1,200 amantes del café que ya disfrutan Bolsadecafé
-            cada mes.
+            {t("home.ctaBody")}
           </p>
           <Button
             size="lg"
             onClick={() => scrollTo("planes")}
             className="w-full sm:w-auto bg-white text-brand-900 hover:bg-brand-50 px-8 sm:px-10 py-5 sm:py-6 text-base font-bold rounded-xl shadow-2xl min-h-[48px]"
           >
-            Comenzar Mi Suscripción
+            {t("home.ctaButton")}
             <ArrowRight className="ml-2 h-5 w-5" />
           </Button>
         </div>
@@ -1224,8 +1246,7 @@ export default function Index() {
                 />
               </div>
               <p className="text-neutral-400 text-sm leading-relaxed mb-5">
-                Café mexicano premium, tostado artesanalmente y entregado en tu
-                puerta cada mes.
+                {t("home.footerBlurb")}
               </p>
               <div className="flex gap-3">
                 {[
@@ -1253,15 +1274,12 @@ export default function Index() {
 
             <div>
               <h4 className="font-semibold text-sm uppercase tracking-wider text-neutral-400 mb-4">
-                Navegación
+                {t("home.footerNav")}
               </h4>
               <ul className="space-y-2.5">
-                {[
-                  ["inicio", "Inicio"],
-                  ["planes", "Planes"],
-                  ["como-funciona", "Cómo Funciona"],
-                  ["preguntas", "FAQ"],
-                ].map(([id, label]) => (
+                {navLinks
+                  .filter(([id]) => id !== "envios-eeuu")
+                  .map(([id, label]) => (
                   <li key={id}>
                     <button
                       onClick={() => scrollTo(id)}
@@ -1276,7 +1294,7 @@ export default function Index() {
                     onClick={() => navigate("/blog")}
                     className="text-neutral-400 hover:text-white text-sm transition-colors"
                   >
-                    Blog
+                    {t("nav.blog")}
                   </button>
                 </li>
               </ul>
@@ -1284,7 +1302,7 @@ export default function Index() {
 
             <div>
               <h4 className="font-semibold text-sm uppercase tracking-wider text-neutral-400 mb-4">
-                Legal
+                {t("home.footerLegal")}
               </h4>
               <ul className="space-y-2.5 text-sm text-neutral-400">
                 <li>
@@ -1292,7 +1310,7 @@ export default function Index() {
                     href="/terms"
                     className="hover:text-white transition-colors"
                   >
-                    Términos y Condiciones
+                    {t("home.footerTerms")}
                   </a>
                 </li>
                 <li>
@@ -1300,7 +1318,7 @@ export default function Index() {
                     href="/privacy"
                     className="hover:text-white transition-colors"
                   >
-                    Política de Privacidad
+                    {t("home.footerPrivacy")}
                   </a>
                 </li>
                 <li>
@@ -1308,7 +1326,7 @@ export default function Index() {
                     href="/ayuda"
                     className="hover:text-white transition-colors"
                   >
-                    Centro de Ayuda
+                    {t("home.footerHelp")}
                   </a>
                 </li>
               </ul>
@@ -1316,7 +1334,7 @@ export default function Index() {
 
             <div>
               <h4 className="font-semibold text-sm uppercase tracking-wider text-neutral-400 mb-4">
-                Contacto
+                {t("home.footerContact")}
               </h4>
               <ul className="space-y-3 text-sm text-neutral-400">
                 <li className="flex items-start gap-2.5">
@@ -1336,7 +1354,7 @@ export default function Index() {
           </div>
 
           <div className="border-t border-neutral-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-500">
-            <p>© 2026 Bolsadecafé. Todos los derechos reservados.</p>
+            <p>{t("home.footerRights")}</p>
             <div className="flex items-center gap-4">
               <a
                 href="/admin"
@@ -1348,7 +1366,7 @@ export default function Index() {
                 onClick={() => scrollTo("inicio")}
                 className="flex items-center gap-1.5 hover:text-white transition-colors"
               >
-                Volver arriba <ChevronUp className="h-3.5 w-3.5" />
+                {t("home.footerTop")} <ChevronUp className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>

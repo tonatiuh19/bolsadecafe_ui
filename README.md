@@ -155,6 +155,8 @@ See **[docs/stripe-webhook-setup.md](docs/stripe-webhook-setup.md)** for full de
 
 For the complete go-live checklist, see **[docs/production-rollout.md](docs/production-rollout.md)**.
 
+US shipping (MXN + international fee): **[docs/us-shipping.md](docs/us-shipping.md)**.
+
 Quick reference — production endpoint: `https://www.bolsadecafe.com/api/webhook`
 
 Events to enable:

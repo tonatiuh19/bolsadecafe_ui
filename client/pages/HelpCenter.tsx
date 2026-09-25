@@ -135,6 +135,14 @@ const FAQ_CATEGORIES: FaqCategory[] = [
         a: "Sí, enviamos a todos los estados de México sin costo adicional.",
       },
       {
+        q: "¿Envían a Estados Unidos?",
+        a: "Sí. Enviamos a los 50 estados y DC. El cobro se realiza en pesos mexicanos (MXN). Para EE.UU. se agrega un cargo internacional mensual de $650 MXN que cubre el envío y la gestión migratoria. Te compartimos el número de guía; los tiempos de entrega pueden variar.",
+      },
+      {
+        q: "Si estoy en EE.UU., ¿me cobran en dólares?",
+        a: "No. Cobramos siempre en MXN. Si usas una tarjeta de EE.UU., tu banco puede convertir el cargo a USD y aplicar comisiones de tipo de cambio. En el checkout mostramos un aproximado en dólares (referencia fija: 20 MXN = 1 USD).",
+      },
+      {
         q: "¿Puedo rastrear mi paquete?",
         a: "Te notificaremos por email con el número de guía una vez que tu paquete sea despachado. Podrás rastrear directamente en el sitio de la paquetería.",
       },

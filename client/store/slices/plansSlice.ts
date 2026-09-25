@@ -9,6 +9,7 @@ export interface SubscriptionPlan {
   description: string;
   price: number;
   price_mxn: string;
+  price_mxn_us?: string | null;
   weight: string;
   is_active: boolean;
   requires_contact?: boolean;

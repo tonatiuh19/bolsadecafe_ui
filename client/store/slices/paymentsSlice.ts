@@ -74,6 +74,7 @@ export const finalizeSubscription = createAsyncThunk(
       planId: string;
       grindTypeId?: string;
       address?: any;
+      shippingCountry?: "MX" | "US";
     },
     { getState, rejectWithValue },
   ) => {
@@ -106,6 +107,7 @@ export const createSubscription = createAsyncThunk(
       planId: string;
       grindTypeId?: string;
       address?: any;
+      shippingCountry?: "MX" | "US";
     },
     { getState, rejectWithValue },
   ) => {

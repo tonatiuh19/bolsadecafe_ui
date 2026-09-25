@@ -108,7 +108,7 @@ export default function SEOMeta({
             "@type": "ContactPoint",
             email: "dihola@bolsadecafe.com",
             contactType: "customer service",
-            areaServed: "MX",
+            areaServed: ["MX", "US"],
             availableLanguage: "Spanish",
           },
         })}

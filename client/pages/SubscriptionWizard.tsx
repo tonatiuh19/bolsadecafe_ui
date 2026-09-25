@@ -23,6 +23,7 @@ import {
   Loader2,
   User,
   CreditCard,
+  Globe2,
 } from "lucide-react";
 import { loadStripe } from "@stripe/stripe-js";
 import {
@@ -36,7 +37,11 @@ import {
   selectGrindTypes,
   selectGrindTypesLoading,
 } from "@/store/slices/grindTypesSlice";
-import { selectStates, selectStatesLoading } from "@/store/slices/statesSlice";
+import {
+  selectStates,
+  selectStatesLoading,
+  fetchStates,
+} from "@/store/slices/statesSlice";
 import { selectPlans, selectPlansLoading } from "@/store/slices/plansSlice";
 import { selectIsAuthenticated, selectUser } from "@/store/slices/authSlice";
 import { fetchHome } from "@/store/slices/homeSlice";
@@ -59,13 +64,26 @@ import StripeCheckoutForm from "@/components/StripeCheckoutForm";
 import {
   MobileSubscriptionSummaryDock,
   SubscriptionSummaryContent,
+  UsPriceBreakdown,
 } from "@/components/SubscriptionWizardSummary";
+import { formatMxn, resolveDisplayPricing } from "@shared/pricing";
+import type { ShippingCountry } from "@shared/pricing";
+import {
+  isValidPostalCode,
+  postalCodeErrorMessage,
+  postalCodeLabel,
+  postalCodeMaxLength,
+  postalCodePlaceholder,
+} from "@shared/address";
+import { useTranslation } from "react-i18next";
+import LanguageToggle from "@/components/LanguageToggle";
 
 interface SubscriptionPlan {
   id: string;
   name: string;
   weight: string;
   price: number;
+  priceUs?: number;
   originalPrice?: number;
   description: string;
   features: string[];
@@ -98,6 +116,7 @@ export default function SubscriptionWizard() {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useAppDispatch();
+  const { t } = useTranslation();
 
   // Redux state
   const grindTypes = useAppSelector(selectGrindTypes);
@@ -150,6 +169,9 @@ export default function SubscriptionWizard() {
           name: apiPlan.name,
           weight: apiPlan.weight,
           price: parseFloat(apiPlan.price_mxn),
+          priceUs: apiPlan.price_mxn_us
+            ? parseFloat(apiPlan.price_mxn_us)
+            : undefined,
           description: apiPlan.description,
           features: apiPlan.features || [],
           gradient:
@@ -166,6 +188,22 @@ export default function SubscriptionWizard() {
     }
   }, [selectedPlanId, apiPlans]);
 
+  // Ensure selected plan always has priceUs from API (needed for US checkout display)
+  useEffect(() => {
+    const plan = wizardData.selectedPlan;
+    if (!plan?.id || !apiPlans?.length) return;
+    const apiPlan = apiPlans.find((p: any) => p.plan_id === plan.id);
+    if (!apiPlan?.price_mxn_us) return;
+    const nextUs = parseFloat(apiPlan.price_mxn_us);
+    if (!Number.isFinite(nextUs)) return;
+    if (plan.priceUs === nextUs) return;
+    dispatch(
+      updateWizardData({
+        selectedPlan: { ...plan, priceUs: nextUs },
+      }),
+    );
+  }, [apiPlans, wizardData.selectedPlan?.id, wizardData.selectedPlan?.priceUs, dispatch]);
+
   // Scroll to top when step changes
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -176,7 +214,7 @@ export default function SubscriptionWizard() {
   // We never reuse a previous clientSecret because a succeeded SetupIntent
   // cannot be confirmed again (Stripe throws setup_intent_unexpected_state).
   useEffect(() => {
-    if (wizardStep === 4 && wizardData.selectedPlan) {
+    if (wizardStep === 5 && wizardData.selectedPlan) {
       dispatch(clearPaymentState());
       dispatch(createSetupIntent());
     }
@@ -188,13 +226,13 @@ export default function SubscriptionWizard() {
 
   const nextStep = () => {
     // After recipient selection (step 2), check if user is authenticated
-    if (wizardStep === 2 && !isAuthenticated) {
+    if (wizardStep === 3 && !isAuthenticated) {
       setShowAuthModal(true);
       return;
     }
 
     // After authentication, prefill recipient data if "self" was selected
-    if (wizardStep === 2 && wizardData.recipientType === "self" && user) {
+    if (wizardStep === 3 && wizardData.recipientType === "self" && user) {
       dispatch(
         updateWizardData({
           recipientName: user.full_name,
@@ -203,7 +241,7 @@ export default function SubscriptionWizard() {
       );
     }
 
-    if (wizardStep < 5) {
+    if (wizardStep < 6) {
       setWizardStep(wizardStep + 1);
     }
   };
@@ -229,13 +267,49 @@ export default function SubscriptionWizard() {
     }
   };
 
+  const buildShippingAddress = () => {
+    const hasState =
+      wizardData.shippingCountry === "US"
+        ? !!wizardData.stateCode
+        : !!wizardData.stateId;
+    if (
+      !(
+        wizardData.recipientName &&
+        wizardData.streetAddress &&
+        wizardData.city &&
+        hasState &&
+        wizardData.postalCode
+      )
+    ) {
+      return null;
+    }
+    return {
+      full_name: wizardData.recipientName,
+      street_address: wizardData.streetAddress,
+      street_address_2: wizardData.streetAddress2 || null,
+      apartment_number: wizardData.apartmentNumber || null,
+      delivery_instructions: wizardData.deliveryInstructions || null,
+      city: wizardData.city,
+      state_id:
+        wizardData.shippingCountry === "MX"
+          ? parseInt(wizardData.stateId, 10)
+          : null,
+      state_code:
+        wizardData.shippingCountry === "US" ? wizardData.stateCode : null,
+      postal_code: wizardData.postalCode,
+      phone: wizardData.recipientPhone || null,
+      country: wizardData.shippingCountry || "MX",
+      is_default: 1,
+    };
+  };
+
   const handleSubmit = () => {
     console.log("Subscription data:", wizardData);
     // Here you would send data to your backend
     navigate("/");
   };
 
-  const totalSteps = 5; // Total steps: 0-Plan, 1-Grind, 2-Recipient, 3-Address, 4-Payment
+  const totalSteps = 6; // 0-Plan, 1-Grind, 2-Country, 3-Recipient, 4-Address, 5-Payment
   const progressPercentage = ((wizardStep + 1) / totalSteps) * 100;
 
   // Fallback grind options if API data is still loading
@@ -300,31 +374,33 @@ export default function SubscriptionWizard() {
                 onClick={() => navigate("/")}
               >
                 <Home className="h-4 w-4 mr-1.5" />
-                <span className="font-medium text-sm">Volver al inicio</span>
+                <span className="font-medium text-sm">{t("wizard.backHome")}</span>
               </Button>
               <img
                 src="https://disruptinglabs.com/data/bolsadecafe/assets/images/logo_dark.png"
                 alt="Bolsadecafé"
                 className="h-7 w-auto"
               />
-              <div className="w-16 sm:w-20" />
+              <LanguageToggle />
             </div>
 
             {/* Compact Stepper */}
             <div className="flex items-center justify-center max-w-3xl mx-auto overflow-x-auto scrollbar-hide -mx-1 px-1">
               {(hasPreselectedPlan
                 ? [
-                    { step: 1, label: "Molido" },
-                    { step: 2, label: "Entrega" },
-                    { step: 3, label: "Destinatario" },
-                    { step: 4, label: "Pago" },
+                    { step: 1, label: t("wizard.stepGrind") },
+                    { step: 2, label: t("wizard.stepCountry") },
+                    { step: 3, label: t("wizard.stepDelivery") },
+                    { step: 4, label: t("wizard.stepAddress") },
+                    { step: 5, label: t("wizard.stepPay") },
                   ]
                 : [
                     { step: 0, label: "Plan" },
-                    { step: 1, label: "Molido" },
-                    { step: 2, label: "Entrega" },
-                    { step: 3, label: "Destinatario" },
-                    { step: 4, label: "Pago" },
+                    { step: 1, label: t("wizard.stepGrind") },
+                    { step: 2, label: t("wizard.stepCountry") },
+                    { step: 3, label: t("wizard.stepDelivery") },
+                    { step: 4, label: t("wizard.stepAddress") },
+                    { step: 5, label: t("wizard.stepPay") },
                   ]
               ).map((item, index, array) => (
                 <div key={item.step} className="flex items-center">
@@ -372,14 +448,14 @@ export default function SubscriptionWizard() {
         {/* Main Content */}
         <main
           className={`max-w-7xl mx-auto px-3 py-4 sm:px-6 sm:py-8 ${
-            wizardStep !== 4 ? "pb-40 lg:pb-8" : ""
+            wizardStep !== 5 ? "pb-40 lg:pb-8" : ""
           }`}
         >
           {/* Content Grid */}
           <div className="grid lg:grid-cols-3 gap-4 lg:gap-8">
             {/* Left Side - Form (2/3 width on most steps, full width on payment) */}
             <div
-              className={wizardStep === 4 ? "lg:col-span-3" : "lg:col-span-2"}
+              className={wizardStep === 5 ? "lg:col-span-3" : "lg:col-span-2"}
             >
               <div className="bg-white rounded-2xl border border-brand-100 p-4 sm:p-8 shadow-sm">
                 {/* Step 0: Plan Selection */}
@@ -390,10 +466,10 @@ export default function SubscriptionWizard() {
                         <Coffee className="h-10 w-10 text-brand-800" />
                       </div>
                       <h3 className="text-2xl sm:text-3xl font-bold text-neutral-900 mb-2">
-                        Elige tu Plan de Café
+                        {t("wizard.planTitle")}
                       </h3>
                       <p className="text-neutral-600 text-base max-w-xl mx-auto">
-                        Selecciona la cantidad perfecta para tu consumo mensual
+                        {t("wizard.planSubtitle")}
                       </p>
                     </div>
 
@@ -401,14 +477,14 @@ export default function SubscriptionWizard() {
                       <div className="flex justify-center items-center py-20">
                         <Loader2 className="h-10 w-10 animate-spin text-brand-600" />
                         <span className="ml-3 text-lg text-neutral-600">
-                          Cargando planes...
+                          {t("wizard.planLoading")}
                         </span>
                       </div>
                     ) : !apiPlans || apiPlans.length === 0 ? (
                       <div className="flex flex-col justify-center items-center py-20">
                         <Coffee className="h-16 w-16 text-neutral-300 mb-4" />
                         <p className="text-lg text-neutral-600">
-                          No hay planes disponibles en este momento
+                          {t("wizard.planEmpty")}
                         </p>
                       </div>
                     ) : (
@@ -420,6 +496,9 @@ export default function SubscriptionWizard() {
                             name: plan.name,
                             weight: plan.weight,
                             price: parseFloat(plan.price_mxn),
+                            priceUs: plan.price_mxn_us
+                              ? parseFloat(plan.price_mxn_us)
+                              : undefined,
                             description: plan.description,
                             gradient:
                               plan.plan_id === "250gr"
@@ -428,7 +507,8 @@ export default function SubscriptionWizard() {
                                   ? "from-brand-700 to-brand-800"
                                   : "from-brand-800 to-brand-900",
                           }))
-                          .map((plan: any) => (
+                          .map((plan: any) => {
+                            return (
                             <div
                               key={plan.id}
                               onClick={() => {
@@ -467,14 +547,17 @@ export default function SubscriptionWizard() {
                                   ${plan.price}
                                 </span>
                                 <span className="text-neutral-600 text-sm font-medium">
-                                  MXN/mes
+                                  {t("wizard.planMxLabel")}
                                 </span>
                               </div>
                               <div className="mt-2 text-sm font-semibold text-neutral-700">
-                                {plan.weight} por mes
+                                {t("wizard.planWeight", {
+                                  weight: plan.weight,
+                                })}
                               </div>
                             </div>
-                          ))}
+                            );
+                          })}
                       </div>
                     )}
                   </div>
@@ -549,6 +632,101 @@ export default function SubscriptionWizard() {
                 )}
 
                 {wizardStep === 2 && (
+                  <div className="space-y-6 animate-fadeIn">
+                    <div className="text-center mb-8">
+                      <div className="inline-block p-4 bg-gradient-to-r from-brand-100 to-brand-50 rounded-2xl mb-4">
+                        <Globe2 className="h-10 w-10 text-brand-800" />
+                      </div>
+                      <h3 className="text-2xl sm:text-3xl font-bold text-neutral-900 mb-2">
+                        {t("wizard.countryTitle")}
+                      </h3>
+                      <p className="text-neutral-600 text-base max-w-xl mx-auto">
+                        {t("wizard.countrySubtitle")}
+                      </p>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {(
+                        [
+                          {
+                            id: "MX" as ShippingCountry,
+                            title: t("wizard.mexico"),
+                            desc: t("wizard.mxFreeShipping"),
+                            detail: t("wizard.mxPlanPrice"),
+                          },
+                          {
+                            id: "US" as ShippingCountry,
+                            title: t("wizard.usa"),
+                            desc: t("wizard.usFeeNote"),
+                            detail: t("wizard.usShipBlurb"),
+                          },
+                        ] as const
+                      ).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => {
+                            const plan = wizardData.selectedPlan;
+                            const apiPlan = apiPlans?.find(
+                              (p: any) => p.plan_id === plan?.id,
+                            );
+                            const enrichedPlan =
+                              plan && apiPlan
+                                ? {
+                                    ...plan,
+                                    price: parseFloat(apiPlan.price_mxn),
+                                    priceUs: apiPlan.price_mxn_us
+                                      ? parseFloat(apiPlan.price_mxn_us)
+                                      : plan.priceUs,
+                                  }
+                                : plan;
+                            dispatch(
+                              updateWizardData({
+                                shippingCountry: opt.id,
+                                selectedPlan: enrichedPlan,
+                                stateId: "",
+                                stateCode: "",
+                                postalCode: "",
+                                city: "",
+                                streetAddress: "",
+                                streetAddress2: "",
+                              }),
+                            );
+                            dispatch(fetchStates(opt.id));
+                          }}
+                          className={`text-left p-5 rounded-xl border-2 transition-all ${
+                            wizardData.shippingCountry === opt.id
+                              ? "border-brand-600 bg-brand-50/50 shadow-md ring-2 ring-brand-200"
+                              : "border-neutral-200 hover:border-brand-300"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <Globe2 className="h-8 w-8 text-brand-700" />
+                            {wizardData.shippingCountry === opt.id && (
+                              <div className="w-6 h-6 rounded-full bg-brand-600 flex items-center justify-center">
+                                <Check className="h-4 w-4 text-white" />
+                              </div>
+                            )}
+                          </div>
+                          <h4 className="text-xl font-bold text-neutral-900 mb-1">
+                            {opt.title}
+                          </h4>
+                          <p className="text-sm font-semibold text-brand-800 mb-2">
+                            {opt.desc}
+                          </p>
+                          <p className="text-xs text-neutral-600 leading-relaxed">
+                            {opt.detail}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-center text-xs text-neutral-500 mt-4">
+                      {t("wizard.countryOnlyHint")}
+                    </p>
+                  </div>
+                )}
+
+                {wizardStep === 3 && (
                   <div className="space-y-6 animate-fadeIn">
                     <div className="text-center mb-8">
                       <div className="inline-block p-4 bg-gradient-to-r from-brand-100 to-brand-50 rounded-2xl mb-4">
@@ -646,7 +824,7 @@ export default function SubscriptionWizard() {
                   </div>
                 )}
 
-                {wizardStep === 3 && (
+                {wizardStep === 4 && (
                   <div className="space-y-6 animate-fadeIn">
                     <div className="text-center mb-8">
                       <div className="inline-block p-4 bg-gradient-to-r from-brand-100 to-brand-50 rounded-2xl mb-4">
@@ -658,12 +836,13 @@ export default function SubscriptionWizard() {
                           : "¿Dónde enviamos el café?"}
                       </h3>
                       <p className="text-neutral-600 text-base max-w-xl mx-auto">
-                        Entregamos en toda la República Mexicana sin costo
+                        {wizardData.shippingCountry === "US"
+                          ? "Enviamos a los 50 estados de EE.UU. y DC. Te avisamos el tracking; los tiempos pueden variar."
+                          : "Entregamos en toda la República Mexicana sin costo"}
                       </p>
                     </div>
 
                     <div className="space-y-4">
-                      {/* Recipient Name & Phone - Only show if gift for someone else */}
                       {wizardData.recipientType === "other" && (
                         <>
                           <div>
@@ -675,7 +854,11 @@ export default function SubscriptionWizard() {
                             </Label>
                             <Input
                               id="recipient-name"
-                              placeholder="Ej: María García López"
+                              placeholder={
+                                wizardData.shippingCountry === "US"
+                                  ? t("wizard.addrRecipientPhUs")
+                                  : t("wizard.addrRecipientPhMx")
+                              }
                               value={wizardData.recipientName}
                               onChange={(e) =>
                                 dispatch(
@@ -696,7 +879,11 @@ export default function SubscriptionWizard() {
                             </Label>
                             <Input
                               id="recipient-phone"
-                              placeholder="Ej: 55 1234 5678"
+                              placeholder={
+                                wizardData.shippingCountry === "US"
+                                  ? t("wizard.addrPhonePhUs")
+                                  : t("wizard.addrPhonePhMx")
+                              }
                               value={wizardData.recipientPhone}
                               onChange={(e) =>
                                 dispatch(
@@ -725,16 +912,30 @@ export default function SubscriptionWizard() {
                           type="button"
                           onClick={() =>
                             dispatch(
-                              updateWizardData({
-                                streetAddress: "Calle Independencia 47",
-                                streetAddress2: "Col. Centro",
-                                apartmentNumber: "",
-                                city: "Lagos de Moreno",
-                                stateId: "14", // Jalisco
-                                postalCode: "47400",
-                                deliveryInstructions:
-                                  "Casa color azul, tocar timbre",
-                              }),
+                              updateWizardData(
+                                wizardData.shippingCountry === "US"
+                                  ? {
+                                      streetAddress: "123 Main St",
+                                      streetAddress2: "Apt 4",
+                                      apartmentNumber: "",
+                                      city: "Austin",
+                                      stateId: "",
+                                      stateCode: "TX",
+                                      postalCode: "78701",
+                                      deliveryInstructions: "Leave at door",
+                                    }
+                                  : {
+                                      streetAddress: "Calle Independencia 47",
+                                      streetAddress2: "Col. Centro",
+                                      apartmentNumber: "",
+                                      city: "Lagos de Moreno",
+                                      stateId: "14",
+                                      stateCode: "",
+                                      postalCode: "47400",
+                                      deliveryInstructions:
+                                        "Casa color azul, tocar timbre",
+                                    },
+                              ),
                             )
                           }
                           className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border border-dashed border-amber-400 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-colors"
@@ -749,11 +950,15 @@ export default function SubscriptionWizard() {
                           htmlFor="streetAddress"
                           className="text-sm font-semibold text-neutral-900 block mb-2"
                         >
-                          Calle y número
+                          {t("wizard.addrStreet")}
                         </Label>
                         <Input
                           id="streetAddress"
-                          placeholder="Ej: Av. Insurgentes Sur 1234"
+                          placeholder={
+                            wizardData.shippingCountry === "US"
+                              ? t("wizard.addrStreetPhUs")
+                              : t("wizard.addrStreetPhMx")
+                          }
                           value={wizardData.streetAddress}
                           onChange={(e) =>
                             dispatch(
@@ -772,14 +977,17 @@ export default function SubscriptionWizard() {
                           htmlFor="streetAddress2"
                           className="text-sm font-semibold text-neutral-900 block mb-2"
                         >
-                          Colonia, delegación o municipio{" "}
-                          <span className="text-neutral-500 font-normal">
-                            (opcional)
-                          </span>
+                          {wizardData.shippingCountry === "US"
+                            ? t("wizard.addrLine2Us")
+                            : t("wizard.addrLine2Mx")}
                         </Label>
                         <Input
                           id="streetAddress2"
-                          placeholder="Ej: Col. Del Valle"
+                          placeholder={
+                            wizardData.shippingCountry === "US"
+                              ? t("wizard.addrLine2PhUs")
+                              : t("wizard.addrLine2PhMx")
+                          }
                           value={wizardData.streetAddress2}
                           onChange={(e) =>
                             dispatch(
@@ -798,14 +1006,17 @@ export default function SubscriptionWizard() {
                           htmlFor="apartmentNumber"
                           className="text-sm font-semibold text-neutral-900 block mb-2"
                         >
-                          Departamento / Interior{" "}
-                          <span className="text-neutral-500 font-normal">
-                            (opcional)
-                          </span>
+                          {wizardData.shippingCountry === "US"
+                            ? t("wizard.addrAptUs")
+                            : t("wizard.addrAptMx")}
                         </Label>
                         <Input
                           id="apartmentNumber"
-                          placeholder="Ej: Depto 4B, Piso 3"
+                          placeholder={
+                            wizardData.shippingCountry === "US"
+                              ? t("wizard.addrAptPhUs")
+                              : t("wizard.addrAptPhMx")
+                          }
                           value={wizardData.apartmentNumber}
                           onChange={(e) =>
                             dispatch(
@@ -825,11 +1036,15 @@ export default function SubscriptionWizard() {
                             htmlFor="city"
                             className="text-sm font-semibold text-neutral-900 block mb-2"
                           >
-                            Ciudad
+                            {t("wizard.addrCity")}
                           </Label>
                           <Input
                             id="city"
-                            placeholder="Ej: Ciudad de México"
+                            placeholder={
+                              wizardData.shippingCountry === "US"
+                                ? t("wizard.addrCityPhUs")
+                                : t("wizard.addrCityPhMx")
+                            }
                             value={wizardData.city}
                             onChange={(e) =>
                               dispatch(
@@ -847,7 +1062,9 @@ export default function SubscriptionWizard() {
                             htmlFor="stateId"
                             className="text-sm font-semibold text-neutral-900 block mb-2"
                           >
-                            Estado
+                            {wizardData.shippingCountry === "US"
+                              ? t("wizard.addrStateUs")
+                              : t("wizard.addrStateMx")}
                           </Label>
                           {statesLoading ? (
                             <div className="flex items-center justify-center h-11 border-2 border-neutral-200 rounded-lg">
@@ -855,24 +1072,40 @@ export default function SubscriptionWizard() {
                             </div>
                           ) : (
                             <Select
-                              value={wizardData.stateId}
+                              value={
+                                wizardData.shippingCountry === "US"
+                                  ? wizardData.stateCode
+                                  : wizardData.stateId
+                              }
                               onValueChange={(value) =>
                                 dispatch(
-                                  updateWizardData({
-                                    stateId: value,
-                                  }),
+                                  updateWizardData(
+                                    wizardData.shippingCountry === "US"
+                                      ? { stateCode: value, stateId: "" }
+                                      : { stateId: value, stateCode: "" },
+                                  ),
                                 )
                               }
                             >
                               <SelectTrigger className="h-11 border-2 border-neutral-200 rounded-lg focus:border-brand-500 focus:ring-brand-500 focus:ring-2">
-                                <SelectValue placeholder="Selecciona estado" />
+                                <SelectValue
+                                  placeholder={
+                                    wizardData.shippingCountry === "US"
+                                      ? t("wizard.addrStatePhUs")
+                                      : t("wizard.addrStatePhMx")
+                                  }
+                                />
                               </SelectTrigger>
                               <SelectContent>
                                 {states && states.length > 0 ? (
                                   states.map((state: any) => (
                                     <SelectItem
                                       key={state.id}
-                                      value={state.id.toString()}
+                                      value={
+                                        wizardData.shippingCountry === "US"
+                                          ? state.code
+                                          : state.id.toString()
+                                      }
                                     >
                                       {state.name}
                                     </SelectItem>
@@ -894,11 +1127,11 @@ export default function SubscriptionWizard() {
                           htmlFor="postalCode"
                           className="text-sm font-semibold text-neutral-900 block mb-2"
                         >
-                          Código Postal
+                          {postalCodeLabel(wizardData.shippingCountry)}
                         </Label>
                         <Input
                           id="postalCode"
-                          placeholder="Ej: 03100"
+                          placeholder={`Ej: ${postalCodePlaceholder(wizardData.shippingCountry)}`}
                           value={wizardData.postalCode}
                           onChange={(e) =>
                             dispatch(
@@ -907,9 +1140,22 @@ export default function SubscriptionWizard() {
                               }),
                             )
                           }
-                          maxLength={5}
+                          maxLength={postalCodeMaxLength(
+                            wizardData.shippingCountry,
+                          )}
                           className="text-base p-3 h-11 border-2 border-neutral-200 rounded-lg focus:border-brand-500 focus:ring-brand-500 focus:ring-2 transition-all"
                         />
+                        {wizardData.postalCode &&
+                          !isValidPostalCode(
+                            wizardData.shippingCountry,
+                            wizardData.postalCode,
+                          ) && (
+                            <p className="text-xs text-red-500 mt-1">
+                              {postalCodeErrorMessage(
+                                wizardData.shippingCountry,
+                              )}
+                            </p>
+                          )}
                       </div>
 
                       {/* Delivery Instructions (Optional) */}
@@ -918,14 +1164,15 @@ export default function SubscriptionWizard() {
                           htmlFor="deliveryInstructions"
                           className="text-sm font-semibold text-neutral-900 block mb-2"
                         >
-                          Instrucciones de entrega{" "}
-                          <span className="text-neutral-500 font-normal">
-                            (opcional)
-                          </span>
+                          {t("wizard.addrDelivery")}
                         </Label>
                         <textarea
                           id="deliveryInstructions"
-                          placeholder="Ej: Tocar el timbre 2 veces, dejar con el portero..."
+                          placeholder={
+                            wizardData.shippingCountry === "US"
+                              ? t("wizard.addrDeliveryPhUs")
+                              : t("wizard.addrDeliveryPhMx")
+                          }
                           value={wizardData.deliveryInstructions}
                           onChange={(e) =>
                             dispatch(
@@ -946,7 +1193,7 @@ export default function SubscriptionWizard() {
                   </div>
                 )}
 
-                {wizardStep === 4 && (
+                {wizardStep === 5 && (
                   <div className="space-y-6 animate-fadeIn">
                     <div className="text-center mb-8">
                       <div className="inline-block p-4 bg-gradient-to-r from-brand-100 to-brand-50 rounded-2xl mb-4">
@@ -984,16 +1231,53 @@ export default function SubscriptionWizard() {
                               }
                             </span>
                           </div>
-                          <div className="flex justify-between border-t border-neutral-200 pt-3">
-                            <span className="text-lg font-bold text-neutral-900">
-                              Total mensual:
+                          <div className="flex justify-between">
+                            <span className="text-neutral-600">
+                              {t("wizard.summaryCountry")}
                             </span>
-                            <span className="text-2xl font-bold text-brand-700">
-                              ${wizardData.selectedPlan?.price} MXN
+                            <span className="font-bold text-neutral-900">
+                              {wizardData.shippingCountry === "US"
+                                ? t("wizard.usa")
+                                : t("wizard.mexico")}
                             </span>
                           </div>
+                          {(() => {
+                            const plan = wizardData.selectedPlan;
+                            if (!plan) return null;
+                            const pricing = resolveDisplayPricing(
+                              Number(plan.price),
+                              wizardData.shippingCountry,
+                              plan.priceUs != null ? Number(plan.priceUs) : null,
+                            );
+                            if (pricing.isUS) {
+                              return (
+                                <div className="pt-2 border-t border-neutral-100">
+                                  <UsPriceBreakdown
+                                    pricing={pricing}
+                                    showWhy
+                                  />
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="flex justify-between border-t border-neutral-200 pt-3">
+                                <span className="text-lg font-bold text-neutral-900">
+                                  {t("wizard.summaryTotal")}
+                                </span>
+                                <span className="text-2xl font-bold text-brand-700">
+                                  ${pricing.chargeMxn} MXN
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
+
+                      {wizardData.shippingCountry === "US" && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
+                          {t("wizard.mxnBankDisclaimer")}
+                        </div>
+                      )}
 
                       {/* Delivery Summary */}
                       <div className="border-2 border-neutral-200 rounded-xl p-6 bg-white">
@@ -1011,9 +1295,10 @@ export default function SubscriptionWizard() {
                           <p>
                             {wizardData.city},{" "}
                             {
-                              states.find(
-                                (s: any) =>
-                                  s.id.toString() === wizardData.stateId,
+                              states.find((s: any) =>
+                                wizardData.shippingCountry === "US"
+                                  ? s.code === wizardData.stateCode
+                                  : s.id.toString() === wizardData.stateId,
                               )?.name
                             }{" "}
                             {wizardData.postalCode}
@@ -1097,35 +1382,18 @@ export default function SubscriptionWizard() {
                           <StripeCheckoutForm
                             clientSecret={clientSecret}
                             onSuccess={async (paymentMethodId) => {
-                              const address =
-                                wizardData.recipientName &&
-                                wizardData.streetAddress &&
-                                wizardData.city &&
-                                wizardData.stateId &&
-                                wizardData.postalCode
-                                  ? {
-                                      full_name: wizardData.recipientName,
-                                      street_address: wizardData.streetAddress,
-                                      street_address_2:
-                                        wizardData.streetAddress2 || null,
-                                      apartment_number:
-                                        wizardData.apartmentNumber || null,
-                                      delivery_instructions:
-                                        wizardData.deliveryInstructions || null,
-                                      city: wizardData.city,
-                                      state_id: parseInt(wizardData.stateId),
-                                      postal_code: wizardData.postalCode,
-                                      phone: wizardData.recipientPhone || null,
-                                      country: "MX",
-                                      is_default: 1,
-                                    }
-                                  : null;
+                              const address = buildShippingAddress();
+                              const shippingCountry =
+                                (wizardData.shippingCountry as
+                                  | "MX"
+                                  | "US") || "MX";
 
                               const subscriptionPayload = {
                                 paymentMethodId,
                                 planId: wizardData.selectedPlan?.id || "",
                                 grindTypeId: wizardData.grind || undefined,
                                 address,
+                                shippingCountry,
                               };
 
                               const result = await dispatch(
@@ -1164,29 +1432,11 @@ export default function SubscriptionWizard() {
                               return { type: "complete" as const };
                             }}
                             onFinalize3DS={async (stripeSubscriptionId) => {
-                              const address =
-                                wizardData.recipientName &&
-                                wizardData.streetAddress &&
-                                wizardData.city &&
-                                wizardData.stateId &&
-                                wizardData.postalCode
-                                  ? {
-                                      full_name: wizardData.recipientName,
-                                      street_address: wizardData.streetAddress,
-                                      street_address_2:
-                                        wizardData.streetAddress2 || null,
-                                      apartment_number:
-                                        wizardData.apartmentNumber || null,
-                                      delivery_instructions:
-                                        wizardData.deliveryInstructions || null,
-                                      city: wizardData.city,
-                                      state_id: parseInt(wizardData.stateId),
-                                      postal_code: wizardData.postalCode,
-                                      phone: wizardData.recipientPhone || null,
-                                      country: "MX",
-                                      is_default: 1,
-                                    }
-                                  : null;
+                              const address = buildShippingAddress();
+                              const shippingCountry =
+                                (wizardData.shippingCountry as
+                                  | "MX"
+                                  | "US") || "MX";
 
                               const result = await dispatch(
                                 finalizeSubscription({
@@ -1194,6 +1444,7 @@ export default function SubscriptionWizard() {
                                   planId: wizardData.selectedPlan?.id || "",
                                   grindTypeId: wizardData.grind || undefined,
                                   address,
+                                  shippingCountry,
                                 }),
                               );
 
@@ -1227,13 +1478,15 @@ export default function SubscriptionWizard() {
             </div>
 
             {/* Desktop sidebar — hidden on mobile (see sticky dock below) */}
-            {wizardStep !== 4 && (
+            {wizardStep !== 5 && (
               <div className="hidden lg:block lg:col-span-1">
                 <div className="sticky top-20 bg-white rounded-2xl border border-brand-100 p-4 sm:p-6 shadow-sm h-fit">
                   <SubscriptionSummaryContent
+                    key={`sum-${wizardData.shippingCountry || "none"}-${wizardData.selectedPlan?.id}-${wizardData.selectedPlan?.priceUs ?? ""}-${wizardStep}`}
                     data={wizardData}
                     grindOptions={displayGrindOptions}
                     states={states ?? []}
+                    showPricing={wizardStep !== 2}
                   />
                 </div>
               </div>
@@ -1251,7 +1504,7 @@ export default function SubscriptionWizard() {
                 }`}
               >
                 <ChevronRight className="mr-2 h-4 w-4 rotate-180" />
-                Anterior
+                {t("common.back")}
               </Button>
 
               {wizardStep < totalSteps - 1 && (
@@ -1260,19 +1513,26 @@ export default function SubscriptionWizard() {
                   disabled={
                     (wizardStep === 0 && !wizardData.selectedPlan) ||
                     (wizardStep === 1 && !wizardData.grind) ||
-                    (wizardStep === 2 && !wizardData.recipientType) ||
-                    (wizardStep === 3 &&
+                    (wizardStep === 2 && !wizardData.shippingCountry) ||
+                    (wizardStep === 3 && !wizardData.recipientType) ||
+                    (wizardStep === 4 &&
                       (!wizardData.streetAddress ||
                         !wizardData.city ||
-                        !wizardData.stateId ||
                         !wizardData.postalCode ||
+                        !isValidPostalCode(
+                          wizardData.shippingCountry,
+                          wizardData.postalCode,
+                        ) ||
+                        (wizardData.shippingCountry === "US"
+                          ? !wizardData.stateCode
+                          : !wizardData.stateId) ||
                         (wizardData.recipientType === "other" &&
                           (!wizardData.recipientName ||
                             !wizardData.recipientPhone))))
                   }
                   className="bg-gradient-to-r from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white font-medium text-base px-8 py-3 rounded-lg shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
                 >
-                  Continuar
+                  {t("common.continue")}
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               )}
@@ -1280,7 +1540,7 @@ export default function SubscriptionWizard() {
           </div>
 
           {/* Payment step: inline nav on mobile only */}
-          {wizardStep === 4 && (
+          {wizardStep === 5 && (
             <div className="lg:hidden mt-4 pt-4 border-t border-neutral-200 safe-bottom">
               <Button
                 variant="outline"
@@ -1288,25 +1548,26 @@ export default function SubscriptionWizard() {
                 className="w-full font-medium text-base px-6 py-3 rounded-lg min-h-[48px]"
               >
                 <ChevronRight className="mr-2 h-4 w-4 rotate-180" />
-                Anterior
+                {t("common.back")}
               </Button>
             </div>
           )}
         </main>
 
         {/* Mobile: sticky summary dock + navigation (hidden on payment step) */}
-        {wizardStep !== 4 && (
+        {wizardStep !== 5 && (
           <div className="lg:hidden fixed inset-x-0 bottom-0 z-50 safe-bottom pointer-events-none">
             <div className="pointer-events-auto mx-2.5 mb-2 space-y-1.5">
               <MobileSubscriptionSummaryDock
+                key={`dock-${wizardData.shippingCountry || "none"}-${wizardData.selectedPlan?.priceUs ?? ""}-${wizardStep}`}
                 data={wizardData}
                 grindOptions={displayGrindOptions}
                 states={states ?? []}
                 wizardStep={wizardStep}
                 open={mobileSummaryOpen}
                 onOpenChange={setMobileSummaryOpen}
+                showPricing={wizardStep !== 2}
               />
-
               <div className="flex gap-1.5 p-1.5 rounded-xl bg-white border border-neutral-200 shadow-sm">
                 <Button
                   variant="outline"
@@ -1317,7 +1578,7 @@ export default function SubscriptionWizard() {
                   }`}
                 >
                   <ChevronRight className="mr-1 h-3.5 w-3.5 rotate-180" />
-                  Anterior
+                  {t("common.back")}
                 </Button>
 
                 {wizardStep < totalSteps - 1 && (
@@ -1327,19 +1588,26 @@ export default function SubscriptionWizard() {
                     disabled={
                       (wizardStep === 0 && !wizardData.selectedPlan) ||
                       (wizardStep === 1 && !wizardData.grind) ||
-                      (wizardStep === 2 && !wizardData.recipientType) ||
-                      (wizardStep === 3 &&
+                      (wizardStep === 2 && !wizardData.shippingCountry) ||
+                      (wizardStep === 3 && !wizardData.recipientType) ||
+                      (wizardStep === 4 &&
                         (!wizardData.streetAddress ||
                           !wizardData.city ||
-                          !wizardData.stateId ||
                           !wizardData.postalCode ||
+                          !isValidPostalCode(
+                            wizardData.shippingCountry,
+                            wizardData.postalCode,
+                          ) ||
+                          (wizardData.shippingCountry === "US"
+                            ? !wizardData.stateCode
+                            : !wizardData.stateId) ||
                           (wizardData.recipientType === "other" &&
                             (!wizardData.recipientName ||
                               !wizardData.recipientPhone))))
                     }
                     className="flex-[1.2] h-10 bg-brand-700 hover:bg-brand-800 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
                   >
-                    Continuar
+                    {t("common.continue")}
                     <ChevronRight className="ml-1 h-3.5 w-3.5" />
                   </Button>
                 )}

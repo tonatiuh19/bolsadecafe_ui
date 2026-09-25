@@ -7,6 +7,14 @@ import jwt from "jsonwebtoken";
 import { Resend } from "resend";
 import Stripe from "stripe";
 import bcrypt from "bcryptjs";
+import {
+  isValidPostalCode,
+  normalizePostalCode,
+  normalizeShippingCountry,
+  normalizeUsStateCode,
+  postalCodeErrorMessage,
+  type ShippingCountryCode,
+} from "../shared/address";
 
 if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET must be set in production");
@@ -32,8 +40,53 @@ function isStripeTestMode(): boolean {
   return process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ?? true;
 }
 
-function stripePriceIdColumn(): "stripe_price_id_test" | "stripe_price_id_prod" {
-  return isStripeTestMode() ? "stripe_price_id_test" : "stripe_price_id_prod";
+/** Dual JOIN so US addresses resolve state names via state_code. */
+const ADDRESS_STATE_JOINS = `
+       LEFT JOIN mexico_states ms ON a.state_id = ms.id AND a.country = 'MX'
+       LEFT JOIN us_states us ON a.state_code = us.code AND a.country = 'US'`;
+
+async function assertValidRegion(
+  country: ShippingCountryCode,
+  stateId: number | null,
+  stateCode: string | null,
+): Promise<void> {
+  if (country === "US") {
+    if (!stateCode) throw new Error("state_code is required for US addresses");
+    const [rows] = await pool.query<any[]>(
+      "SELECT code FROM us_states WHERE code = ? AND is_active = 1 LIMIT 1",
+      [stateCode],
+    );
+    if (rows.length === 0) {
+      throw new Error(`Invalid US state code: ${stateCode}`);
+    }
+    return;
+  }
+  if (!stateId) throw new Error("state_id is required for Mexico addresses");
+  const [rows] = await pool.query<any[]>(
+    "SELECT id FROM mexico_states WHERE id = ? AND is_active = 1 LIMIT 1",
+    [stateId],
+  );
+  if (rows.length === 0) {
+    throw new Error(`Invalid Mexico state_id: ${stateId}`);
+  }
+}
+
+/**
+ * Stripe Price column for this shipping country + Stripe mode.
+ * US uses dedicated MXN prices (base + 600 intl fee baked in).
+ */
+function stripePriceIdColumn(
+  shippingCountry: ShippingCountryCode = "MX",
+):
+  | "stripe_price_id_test"
+  | "stripe_price_id_prod"
+  | "stripe_price_id_us_test"
+  | "stripe_price_id_us_prod" {
+  const test = isStripeTestMode();
+  if (shippingCountry === "US") {
+    return test ? "stripe_price_id_us_test" : "stripe_price_id_us_prod";
+  }
+  return test ? "stripe_price_id_test" : "stripe_price_id_prod";
 }
 
 // Database connection pool
@@ -924,15 +977,17 @@ const handleGetGrindTypes: RequestHandler = async (_req, res) => {
 };
 
 /**
- * GET /api/states
- * Get all active Mexico states from database
+ * GET /api/states?country=MX|US
+ * Get active states/provinces for the shipping country.
  */
-const handleGetStates: RequestHandler = async (_req, res) => {
+const handleGetStates: RequestHandler = async (req, res) => {
   try {
+    const country = normalizeShippingCountry(req.query.country);
+    const table = country === "US" ? "us_states" : "mexico_states";
     const [rows] = await pool.query<any[]>(
-      `SELECT * FROM mexico_states WHERE is_active = 1 ORDER BY name ASC`,
+      `SELECT id, code, name, is_active FROM ${table} WHERE is_active = 1 ORDER BY name ASC`,
     );
-    res.json({ states: rows });
+    res.json({ country, states: rows });
   } catch (error) {
     console.error("Error fetching states:", error);
     res.status(500).json({
@@ -1550,21 +1605,27 @@ const handleGetMySubscription: RequestHandler = async (req, res) => {
   try {
     const [rows] = await pool.query<any[]>(
       `SELECT
-        s.id, s.status, s.stripe_subscription_id,
+        s.id, s.status, s.stripe_subscription_id, s.shipping_country,
         s.current_period_start, s.current_period_end,
         s.cancel_at_period_end, s.cancelled_at, s.created_at,
-        sp.id AS plan_id, sp.name AS plan_name, sp.weight AS plan_weight, sp.price_mxn AS plan_price,
+        sp.id AS plan_id, sp.name AS plan_name, sp.weight AS plan_weight,
+        CASE
+          WHEN s.shipping_country = 'US'
+            THEN COALESCE(sp.price_mxn_us, sp.price_mxn)
+          ELSE sp.price_mxn
+        END AS plan_price,
         gt.id AS grind_type_id, gt.name AS grind_type_name,
         a.id AS addr_id, a.full_name AS addr_full_name,
         a.street_address, a.street_address_2,
         a.apartment_number, a.delivery_instructions,
-        a.city, ms.name AS state, a.state_id,
+        a.city, COALESCE(ms.name, us.name) AS state,
+        a.state_id, a.state_code, a.country AS addr_country,
         a.postal_code, a.phone AS addr_phone
        FROM subscriptions s
        JOIN subscription_plans sp ON s.plan_id = sp.id
        JOIN grind_types gt ON s.grind_type_id = gt.id
        LEFT JOIN addresses a ON s.shipping_address_id = a.id
-       LEFT JOIN mexico_states ms ON a.state_id = ms.id
+       ${ADDRESS_STATE_JOINS}
        WHERE s.user_id = ? AND s.status NOT IN ('cancelled')
        ORDER BY s.created_at DESC`,
       [userId],
@@ -1584,6 +1645,7 @@ const handleGetMySubscription: RequestHandler = async (req, res) => {
       grindTypeId: r.grind_type_id,
       grindTypeName: r.grind_type_name,
       stripeSubscriptionId: r.stripe_subscription_id,
+      shippingCountry: normalizeShippingCountry(r.shipping_country),
       currentPeriodStart: r.current_period_start,
       currentPeriodEnd: r.current_period_end,
       cancelAtPeriodEnd: Boolean(r.cancel_at_period_end),
@@ -1600,6 +1662,8 @@ const handleGetMySubscription: RequestHandler = async (req, res) => {
             city: r.city,
             state: r.state,
             stateId: r.state_id,
+            stateCode: r.state_code,
+            country: normalizeShippingCountry(r.addr_country || r.shipping_country),
             postalCode: r.postal_code,
             phone: r.addr_phone,
           }
@@ -1635,27 +1699,21 @@ const handleUpdateSubscriptionAddress: RequestHandler = async (req, res) => {
     deliveryInstructions,
     city,
     stateId,
+    stateCode,
     postalCode,
     phone,
+    country: bodyCountry,
   } = req.body;
 
-  if (
-    !subscriptionId ||
-    !fullName ||
-    !streetAddress ||
-    !city ||
-    !stateId ||
-    !postalCode
-  ) {
+  if (!subscriptionId || !fullName || !streetAddress || !city || !postalCode) {
     return res
       .status(400)
       .json({ success: false, error: "Missing required address fields" });
   }
 
   try {
-    // Verify subscription belongs to user
     const [subs] = await pool.query<any[]>(
-      "SELECT id, shipping_address_id FROM subscriptions WHERE id = ? AND user_id = ?",
+      "SELECT id, shipping_address_id, shipping_country FROM subscriptions WHERE id = ? AND user_id = ?",
       [subscriptionId, userId],
     );
     if (subs.length === 0) {
@@ -1665,13 +1723,41 @@ const handleUpdateSubscriptionAddress: RequestHandler = async (req, res) => {
     }
 
     const sub = subs[0];
+    const country = normalizeShippingCountry(
+      bodyCountry || sub.shipping_country,
+    );
+    const normalizedPostal = normalizePostalCode(postalCode);
+
+    if (!isValidPostalCode(country, normalizedPostal)) {
+      return res.status(400).json({
+        success: false,
+        error: postalCodeErrorMessage(country),
+      });
+    }
+
+    const resolvedStateId =
+      country === "MX" && stateId != null && stateId !== ""
+        ? parseInt(String(stateId), 10)
+        : null;
+    const resolvedStateCode =
+      country === "US"
+        ? normalizeUsStateCode(stateCode || stateId)
+        : null;
+
+    try {
+      await assertValidRegion(country, resolvedStateId, resolvedStateCode);
+    } catch (err) {
+      return res.status(400).json({
+        success: false,
+        error: err instanceof Error ? err.message : "Invalid state",
+      });
+    }
 
     if (sub.shipping_address_id) {
-      // Update existing address
       await pool.query(
         `UPDATE addresses SET full_name=?, street_address=?, street_address_2=?,
          apartment_number=?, delivery_instructions=?,
-         city=?, state_id=?, postal_code=?, phone=?, updated_at=NOW()
+         city=?, state_id=?, state_code=?, postal_code=?, country=?, phone=?, updated_at=NOW()
          WHERE id=? AND user_id=?`,
         [
           fullName,
@@ -1680,18 +1766,19 @@ const handleUpdateSubscriptionAddress: RequestHandler = async (req, res) => {
           apartmentNumber || null,
           deliveryInstructions || null,
           city,
-          stateId,
-          postalCode,
+          resolvedStateId,
+          resolvedStateCode,
+          normalizedPostal,
+          country,
           phone || null,
           sub.shipping_address_id,
           userId,
         ],
       );
     } else {
-      // Create new address and link to subscription
       const [result] = await pool.query<any>(
-        `INSERT INTO addresses (user_id, address_type, full_name, street_address, street_address_2, apartment_number, delivery_instructions, city, state_id, postal_code, phone, is_default)
-         VALUES (?, 'shipping', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        `INSERT INTO addresses (user_id, address_type, full_name, street_address, street_address_2, apartment_number, delivery_instructions, city, state_id, state_code, postal_code, country, phone, is_default)
+         VALUES (?, 'shipping', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           userId,
           fullName,
@@ -1700,8 +1787,10 @@ const handleUpdateSubscriptionAddress: RequestHandler = async (req, res) => {
           apartmentNumber || null,
           deliveryInstructions || null,
           city,
-          stateId,
-          postalCode,
+          resolvedStateId,
+          resolvedStateCode,
+          normalizedPostal,
+          country,
           phone || null,
         ],
       );
@@ -1779,7 +1868,7 @@ const handleUpgradeSubscriptionPlan: RequestHandler = async (req, res) => {
   try {
     // Verify subscription belongs to user and get stripe id
     const [subs] = await pool.query<any[]>(
-      "SELECT id, stripe_subscription_id, plan_id FROM subscriptions WHERE id = ? AND user_id = ? AND status NOT IN ('cancelled')",
+      "SELECT id, stripe_subscription_id, plan_id, shipping_country FROM subscriptions WHERE id = ? AND user_id = ? AND status NOT IN ('cancelled')",
       [subscriptionId, userId],
     );
     if (subs.length === 0) {
@@ -1790,7 +1879,9 @@ const handleUpgradeSubscriptionPlan: RequestHandler = async (req, res) => {
 
     const sub = subs[0];
 
-    const priceField = stripePriceIdColumn();
+    const priceField = stripePriceIdColumn(
+      normalizeShippingCountry(sub.shipping_country),
+    );
     const [plans] = await pool.query<any[]>(
       `SELECT id, ${priceField} AS stripe_price_id FROM subscription_plans WHERE id = ? AND is_active = 1`,
       [newPlanId],
@@ -2243,52 +2334,9 @@ const handleCreatePaymentIntent: RequestHandler = async (req, res) => {
     // Store address if provided (we'll link it to subscription later)
     let addressId = null;
     if (address) {
-      // Check if address already exists
-      const [existingAddresses] = await pool.query<any[]>(
-        `SELECT id FROM addresses 
-         WHERE user_id = ? 
-           AND street_address = ? 
-           AND city = ? 
-           AND state_id = ? 
-           AND postal_code = ?
-         LIMIT 1`,
-        [
-          user.id,
-          address.street_address,
-          address.city,
-          address.state_id,
-          address.postal_code,
-        ],
-      );
-
-      if (existingAddresses.length > 0) {
-        addressId = existingAddresses[0].id;
-        console.log("Using existing address:", addressId);
-      } else {
-        // Create new address
-        const [addressResult] = await pool.query<any>(
-          `INSERT INTO addresses (
-            user_id, full_name, street_address, street_address_2,
-            apartment_number, delivery_instructions,
-            city, state_id, postal_code, phone, country, is_default
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            user.id,
-            address.full_name,
-            address.street_address,
-            address.street_address_2,
-            address.apartment_number || null,
-            address.delivery_instructions || null,
-            address.city,
-            parseInt(address.state_id),
-            address.postal_code,
-            address.phone,
-            address.country || "MX",
-            address.is_default || 0,
-          ],
-        );
-        addressId = addressResult.insertId;
-        console.log("Created new address:", addressId);
+      addressId = await upsertShippingAddress(user.id, address);
+      if (addressId) {
+        console.log("Using shipping address:", addressId);
       }
     }
 
@@ -2419,6 +2467,76 @@ async function resolveSubscriptionPayment(
   return { outcome: "failed", subscription, invoice, paymentIntent };
 }
 
+async function upsertShippingAddress(
+  userId: number,
+  address: any,
+): Promise<number | null> {
+  if (!address) return null;
+
+  const country = normalizeShippingCountry(address.country);
+  const postalCode = normalizePostalCode(address.postal_code);
+  if (!isValidPostalCode(country, postalCode)) {
+    throw new Error(postalCodeErrorMessage(country));
+  }
+
+  const stateId =
+    country === "MX" && address.state_id
+      ? parseInt(String(address.state_id), 10)
+      : null;
+  const stateCode =
+    country === "US"
+      ? normalizeUsStateCode(address.state_code || address.stateId)
+      : null;
+
+  await assertValidRegion(country, stateId, stateCode);
+
+  const [existingAddresses] = await pool.query<any[]>(
+    `SELECT id FROM addresses 
+     WHERE user_id = ? AND street_address = ? AND city = ? AND postal_code = ?
+       AND country = ?
+       AND (
+         (country = 'MX' AND state_id = ?)
+         OR (country = 'US' AND state_code = ?)
+       )
+     LIMIT 1`,
+    [
+      userId,
+      address.street_address,
+      address.city,
+      postalCode,
+      country,
+      stateId,
+      stateCode,
+    ],
+  );
+
+  if (existingAddresses.length > 0) {
+    return existingAddresses[0].id;
+  }
+
+  const [addressResult] = await pool.query<any>(
+    `INSERT INTO addresses (user_id, full_name, street_address, street_address_2,
+      apartment_number, delivery_instructions, city, state_id, state_code, postal_code, country, phone, is_default)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      userId,
+      address.full_name,
+      address.street_address,
+      address.street_address_2 || null,
+      address.apartment_number || null,
+      address.delivery_instructions || null,
+      address.city,
+      stateId,
+      stateCode,
+      postalCode,
+      country,
+      address.phone || null,
+      address.is_default || 0,
+    ],
+  );
+  return addressResult.insertId as number;
+}
+
 async function persistNewSubscription(params: {
   userId: number;
   user: any;
@@ -2426,6 +2544,7 @@ async function persistNewSubscription(params: {
   planId: string;
   grindTypeId?: string;
   shippingAddressId: number | null;
+  shippingCountry?: ShippingCountryCode;
   stripeSubscription: Stripe.Subscription;
   latestInvoice: any;
 }): Promise<any> {
@@ -2434,6 +2553,7 @@ async function persistNewSubscription(params: {
     planId,
     grindTypeId,
     shippingAddressId,
+    shippingCountry = "MX",
     stripeSubscription,
     latestInvoice,
   } = params;
@@ -2463,14 +2583,15 @@ async function persistNewSubscription(params: {
 
   const [result] = await pool.query<any>(
     `INSERT INTO subscriptions
-       (user_id, plan_id, grind_type_id, shipping_address_id, stripe_subscription_id,
+       (user_id, plan_id, grind_type_id, shipping_address_id, shipping_country, stripe_subscription_id,
         status, current_period_start, current_period_end, cancel_at_period_end, cancelled_at)
-     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, 0, NULL)`,
+     VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, 0, NULL)`,
     [
       userId,
       actualPlanId,
       actualGrindTypeId,
       shippingAddressId,
+      shippingCountry,
       stripeSubscription.id,
       periodStart,
       periodEnd,
@@ -2531,17 +2652,22 @@ async function persistNewSubscription(params: {
   const [subscriptions] = await pool.query<any[]>(
     `SELECT s.*,
             u.email, u.full_name,
-            sp.name as plan_name, sp.weight, sp.price_mxn,
+            sp.name as plan_name, sp.weight,
+            CASE
+              WHEN s.shipping_country = 'US'
+                THEN COALESCE(sp.price_mxn_us, sp.price_mxn)
+              ELSE sp.price_mxn
+            END AS charged_price_mxn,
             gt.name as grind_type_name,
-            ms.name as state_name,
+            COALESCE(ms.name, us.name) as state_name,
             a.full_name as address_full_name, a.street_address, a.street_address_2,
-            a.city, a.postal_code, a.phone as address_phone
+            a.city, a.postal_code, a.phone as address_phone, a.country as address_country
      FROM subscriptions s
      JOIN users u ON s.user_id = u.id
      JOIN subscription_plans sp ON s.plan_id = sp.id
      LEFT JOIN grind_types gt ON s.grind_type_id = gt.id
      LEFT JOIN addresses a ON s.shipping_address_id = a.id
-     LEFT JOIN mexico_states ms ON a.state_id = ms.id
+     ${ADDRESS_STATE_JOINS}
      WHERE s.id = ?`,
     [subscriptionId],
   );
@@ -2562,7 +2688,7 @@ async function persistNewSubscription(params: {
       {
         planName: subscription.plan_name,
         weight: subscription.weight,
-        price: parseFloat(subscription.price_mxn).toFixed(2),
+        price: parseFloat(subscription.charged_price_mxn).toFixed(2),
         grindType: subscription.grind_type_name || "Grano Entero",
         nextDelivery: formattedDate,
         address: {
@@ -2590,7 +2716,8 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
   const userId = extractUserId(req, res);
   if (!userId) return;
 
-  const { paymentMethodId, planId, grindTypeId, address } = req.body;
+  const { paymentMethodId, planId, grindTypeId, address, shippingCountry } =
+    req.body;
 
   if (!paymentMethodId || !planId) {
     return res.status(400).json({
@@ -2598,6 +2725,10 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
       error: "paymentMethodId and planId are required",
     });
   }
+
+  const country = normalizeShippingCountry(
+    shippingCountry || address?.country || "MX",
+  );
 
   try {
     const [users] = await pool.query<any[]>(
@@ -2631,51 +2762,20 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
     // ── Handle address ──────────────────────────────────────────────────
     let shippingAddressId: number | null = null;
     if (address) {
-      const [existingAddresses] = await pool.query<any[]>(
-        `SELECT id FROM addresses 
-         WHERE user_id = ? AND street_address = ? AND city = ? AND state_id = ? AND postal_code = ?
-         LIMIT 1`,
-        [
-          userId,
-          address.street_address,
-          address.city,
-          address.state_id,
-          address.postal_code,
-        ],
-      );
-
-      if (existingAddresses.length > 0) {
-        shippingAddressId = existingAddresses[0].id;
-      } else {
-        const [addressResult] = await pool.query<any>(
-          `INSERT INTO addresses (user_id, full_name, street_address, street_address_2,
-            apartment_number, delivery_instructions, city, state_id, postal_code, country, phone, is_default)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            userId,
-            address.full_name,
-            address.street_address,
-            address.street_address_2 || null,
-            address.apartment_number || null,
-            address.delivery_instructions || null,
-            address.city,
-            parseInt(address.state_id),
-            address.postal_code,
-            address.country || "MX",
-            address.phone || null,
-            address.is_default || 0,
-          ],
-        );
-        shippingAddressId = addressResult.insertId;
-      }
+      shippingAddressId = await upsertShippingAddress(userId, {
+        ...address,
+        country,
+      });
     }
 
     // ── Resolve plan ────────────────────────────────────────────────────
     const isTestMode = isStripeTestMode();
-    const priceIdColumn = stripePriceIdColumn();
+    const priceIdColumn = stripePriceIdColumn(country);
 
     const [plans] = await pool.query<any[]>(
-      `SELECT *, ${priceIdColumn} as stripe_price_id FROM subscription_plans WHERE plan_id = ? AND is_active = 1`,
+      `SELECT *, ${priceIdColumn} as stripe_price_id,
+              COALESCE(price_mxn_us, price_mxn) as price_mxn_us
+       FROM subscription_plans WHERE plan_id = ? AND is_active = 1`,
       [planId],
     );
     if (plans.length === 0) {
@@ -2683,9 +2783,12 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
     }
     const plan = plans[0];
 
-    if (!plan.stripe_price_id) {
+    if (
+      !plan.stripe_price_id ||
+      String(plan.stripe_price_id).includes("replace_me")
+    ) {
       return res.status(400).json({
-        error: `Stripe Price ID no configurado para el entorno ${isTestMode ? "test" : "producción"}`,
+        error: `Stripe Price ID no configurado para ${country === "US" ? "EE.UU." : "México"} (${isTestMode ? "test" : "producción"})`,
       });
     }
 
@@ -2697,6 +2800,10 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
       payment_settings: {
         payment_method_types: ["card"],
         save_default_payment_method: "on_subscription",
+      },
+      metadata: {
+        shipping_country: country,
+        plan_id: planId,
       },
       expand: ["latest_invoice.payment_intent"],
     });
@@ -2716,7 +2823,11 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
       const declineMessage = resolved.paymentIntent?.last_payment_error?.message
         ? humanizeStripeDecline(resolved.paymentIntent.last_payment_error.message)
         : "No se pudo procesar el pago inicial. Por favor intenta de nuevo.";
-      const amount = parseFloat(plan.price_mxn);
+      const amount = parseFloat(
+        country === "US"
+          ? plan.price_mxn_us || plan.price_mxn
+          : plan.price_mxn,
+      );
 
       if (resolved.paymentIntent?.last_payment_error) {
         await sendPaymentDeclinedNotifications(pool, {
@@ -2755,12 +2866,14 @@ const handleCreateSubscription: RequestHandler = async (req, res) => {
       planId,
       grindTypeId,
       shippingAddressId,
+      shippingCountry: country,
       stripeSubscription: resolved.subscription,
       latestInvoice: resolved.invoice,
     });
 
     trackVisit(req, "subscription_complete", "/subscription-wizard", {
       plan_id: planId,
+      shipping_country: country,
     });
 
     res.json({ success: true, subscription });
@@ -2782,13 +2895,18 @@ const handleFinalizeSubscription: RequestHandler = async (req, res) => {
   const userId = extractUserId(req, res);
   if (!userId) return;
 
-  const { stripeSubscriptionId, planId, grindTypeId, address } = req.body;
+  const { stripeSubscriptionId, planId, grindTypeId, address, shippingCountry } =
+    req.body;
   if (!stripeSubscriptionId || !planId) {
     return res.status(400).json({
       success: false,
       error: "stripeSubscriptionId and planId are required",
     });
   }
+
+  const country = normalizeShippingCountry(
+    shippingCountry || address?.country || "MX",
+  );
 
   try {
     const [users] = await pool.query<any[]>(
@@ -2829,7 +2947,7 @@ const handleFinalizeSubscription: RequestHandler = async (req, res) => {
     }
 
     const [plans] = await pool.query<any[]>(
-      `SELECT *, ${stripePriceIdColumn()} as stripe_price_id FROM subscription_plans WHERE plan_id = ? AND is_active = 1`,
+      `SELECT *, ${stripePriceIdColumn(country)} as stripe_price_id FROM subscription_plans WHERE plan_id = ? AND is_active = 1`,
       [planId],
     );
     if (plans.length === 0) {
@@ -2838,43 +2956,10 @@ const handleFinalizeSubscription: RequestHandler = async (req, res) => {
 
     let shippingAddressId: number | null = null;
     if (address) {
-      const [existingAddresses] = await pool.query<any[]>(
-        `SELECT id FROM addresses 
-         WHERE user_id = ? AND street_address = ? AND city = ? AND state_id = ? AND postal_code = ?
-         LIMIT 1`,
-        [
-          userId,
-          address.street_address,
-          address.city,
-          address.state_id,
-          address.postal_code,
-        ],
-      );
-
-      if (existingAddresses.length > 0) {
-        shippingAddressId = existingAddresses[0].id;
-      } else {
-        const [addressResult] = await pool.query<any>(
-          `INSERT INTO addresses (user_id, full_name, street_address, street_address_2,
-            apartment_number, delivery_instructions, city, state_id, postal_code, country, phone, is_default)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            userId,
-            address.full_name,
-            address.street_address,
-            address.street_address_2 || null,
-            address.apartment_number || null,
-            address.delivery_instructions || null,
-            address.city,
-            parseInt(address.state_id),
-            address.postal_code,
-            address.country || "MX",
-            address.phone || null,
-            address.is_default || 0,
-          ],
-        );
-        shippingAddressId = addressResult.insertId;
-      }
+      shippingAddressId = await upsertShippingAddress(userId, {
+        ...address,
+        country,
+      });
     }
 
     const subscription = await persistNewSubscription({
@@ -2884,12 +2969,14 @@ const handleFinalizeSubscription: RequestHandler = async (req, res) => {
       planId,
       grindTypeId,
       shippingAddressId,
+      shippingCountry: country,
       stripeSubscription,
       latestInvoice: stripeSubscription.latest_invoice,
     });
 
     trackVisit(req, "subscription_complete", "/subscription-wizard", {
       plan_id: planId,
+      shipping_country: country,
     });
 
     res.json({ success: true, subscription });
@@ -3703,7 +3790,10 @@ const handleAdminOrders: RequestHandler = async (req, res) => {
          gt.name as grind_type_name,
          a.full_name as address_full_name, a.street_address as address_street,
          a.street_address_2 as address_street2, a.city as address_city,
-         ms.name as address_state, a.postal_code as address_postal_code, a.phone as address_phone,
+         COALESCE(ms.name, us.name) as address_state,
+         a.postal_code as address_postal_code, a.phone as address_phone,
+         a.country as address_country,
+         s.shipping_country,
          cc.name as coffee_catalog_name
        FROM orders o
        JOIN users u ON o.user_id = u.id
@@ -3711,7 +3801,7 @@ const handleAdminOrders: RequestHandler = async (req, res) => {
        LEFT JOIN subscription_plans sp ON s.plan_id = sp.id
        LEFT JOIN grind_types gt ON s.grind_type_id = gt.id
        LEFT JOIN addresses a ON o.shipping_address_id = a.id
-       LEFT JOIN mexico_states ms ON a.state_id = ms.id
+       ${ADDRESS_STATE_JOINS}
        LEFT JOIN coffee_catalog cc ON o.coffee_catalog_id = cc.id
        WHERE o.status IN ('processing','shipped','delivered')
        ORDER BY o.created_at DESC
@@ -3752,6 +3842,10 @@ const handleAdminOrders: RequestHandler = async (req, res) => {
       addressState: r.address_state,
       addressPostalCode: r.address_postal_code,
       addressPhone: r.address_phone,
+      addressCountry: normalizeShippingCountry(
+        r.address_country || r.shipping_country,
+      ),
+      shippingCountry: normalizeShippingCountry(r.shipping_country),
     }));
 
     res.json({ success: true, orders });
@@ -3792,13 +3886,13 @@ const handleAdminShipOrder: RequestHandler = async (req, res) => {
       `SELECT o.*, u.email as user_email, u.full_name as user_full_name,
               sp.name as plan_name, sp.weight as plan_weight,
               a.full_name as addr_name, a.street_address, a.street_address_2,
-              a.city, ms.name as state_name, a.postal_code
+              a.city, COALESCE(ms.name, us.name) as state_name, a.postal_code
        FROM orders o
        JOIN users u ON o.user_id = u.id
        LEFT JOIN subscriptions s ON o.subscription_id = s.id
        LEFT JOIN subscription_plans sp ON s.plan_id = sp.id
        LEFT JOIN addresses a ON o.shipping_address_id = a.id
-       LEFT JOIN mexico_states ms ON a.state_id = ms.id
+       ${ADDRESS_STATE_JOINS}
        WHERE o.id = ? AND o.status = 'processing'`,
       [orderId],
     );
@@ -3885,7 +3979,7 @@ const handleAdminShipOrder: RequestHandler = async (req, res) => {
 
     // Fetch updated order
     const [updatedRows] = await pool.query<any[]>(
-      `SELECT o.id, o.order_number, o.status, o.total_amount, o.created_at, o.shipped_at, o.delivered_at, o.tracking_number, o.shipment_provider, o.estimated_delivery, o.notes, o.subscription_id, o.coffee_catalog_id, o.shipping_label_cost, o.supply_cost, u.id as user_id, u.email as user_email, u.full_name as user_full_name, u.phone as user_phone, sp.name as plan_name, sp.weight as plan_weight, gt.name as grind_type_name, a.full_name as address_full_name, a.street_address as address_street, a.street_address_2 as address_street2, a.city as address_city, ms.name as address_state, a.postal_code as address_postal_code, a.phone as address_phone, cc.name as coffee_catalog_name FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN subscriptions s ON o.subscription_id = s.id LEFT JOIN subscription_plans sp ON s.plan_id = sp.id LEFT JOIN grind_types gt ON s.grind_type_id = gt.id LEFT JOIN addresses a ON o.shipping_address_id = a.id LEFT JOIN mexico_states ms ON a.state_id = ms.id LEFT JOIN coffee_catalog cc ON o.coffee_catalog_id = cc.id WHERE o.id = ?`,
+      `SELECT o.id, o.order_number, o.status, o.total_amount, o.created_at, o.shipped_at, o.delivered_at, o.tracking_number, o.shipment_provider, o.estimated_delivery, o.notes, o.subscription_id, o.coffee_catalog_id, o.shipping_label_cost, o.supply_cost, u.id as user_id, u.email as user_email, u.full_name as user_full_name, u.phone as user_phone, sp.name as plan_name, sp.weight as plan_weight, gt.name as grind_type_name, a.full_name as address_full_name, a.street_address as address_street, a.street_address_2 as address_street2, a.city as address_city, COALESCE(ms.name, us.name) as address_state, a.postal_code as address_postal_code, a.phone as address_phone, a.country as address_country, s.shipping_country, cc.name as coffee_catalog_name FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN subscriptions s ON o.subscription_id = s.id LEFT JOIN subscription_plans sp ON s.plan_id = sp.id LEFT JOIN grind_types gt ON s.grind_type_id = gt.id LEFT JOIN addresses a ON o.shipping_address_id = a.id ${ADDRESS_STATE_JOINS} LEFT JOIN coffee_catalog cc ON o.coffee_catalog_id = cc.id WHERE o.id = ?`,
       [orderId],
     );
 
@@ -3926,6 +4020,10 @@ const handleAdminShipOrder: RequestHandler = async (req, res) => {
         addressState: r.address_state,
         addressPostalCode: r.address_postal_code,
         addressPhone: r.address_phone,
+        addressCountry: normalizeShippingCountry(
+          r.address_country || r.shipping_country,
+        ),
+        shippingCountry: normalizeShippingCountry(r.shipping_country),
       },
     });
   } catch (error) {
@@ -4012,7 +4110,7 @@ const handleAdminDeliverOrder: RequestHandler = async (req, res) => {
 
     // Fetch updated order
     const [updatedRows] = await pool.query<any[]>(
-      `SELECT o.id, o.order_number, o.status, o.total_amount, o.created_at, o.shipped_at, o.delivered_at, o.tracking_number, o.shipment_provider, o.estimated_delivery, o.notes, o.subscription_id, u.id as user_id, u.email as user_email, u.full_name as user_full_name, u.phone as user_phone, sp.name as plan_name, sp.weight as plan_weight, gt.name as grind_type_name, a.full_name as address_full_name, a.street_address as address_street, a.street_address_2 as address_street2, a.city as address_city, ms.name as address_state, a.postal_code as address_postal_code, a.phone as address_phone FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN subscriptions s ON o.subscription_id = s.id LEFT JOIN subscription_plans sp ON s.plan_id = sp.id LEFT JOIN grind_types gt ON s.grind_type_id = gt.id LEFT JOIN addresses a ON o.shipping_address_id = a.id LEFT JOIN mexico_states ms ON a.state_id = ms.id WHERE o.id = ?`,
+      `SELECT o.id, o.order_number, o.status, o.total_amount, o.created_at, o.shipped_at, o.delivered_at, o.tracking_number, o.shipment_provider, o.estimated_delivery, o.notes, o.subscription_id, u.id as user_id, u.email as user_email, u.full_name as user_full_name, u.phone as user_phone, sp.name as plan_name, sp.weight as plan_weight, gt.name as grind_type_name, a.full_name as address_full_name, a.street_address as address_street, a.street_address_2 as address_street2, a.city as address_city, COALESCE(ms.name, us.name) as address_state, a.postal_code as address_postal_code, a.phone as address_phone, a.country as address_country, s.shipping_country FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN subscriptions s ON o.subscription_id = s.id LEFT JOIN subscription_plans sp ON s.plan_id = sp.id LEFT JOIN grind_types gt ON s.grind_type_id = gt.id LEFT JOIN addresses a ON o.shipping_address_id = a.id ${ADDRESS_STATE_JOINS} WHERE o.id = ?`,
       [orderId],
     );
 
@@ -4046,6 +4144,10 @@ const handleAdminDeliverOrder: RequestHandler = async (req, res) => {
         addressState: r.address_state,
         addressPostalCode: r.address_postal_code,
         addressPhone: r.address_phone,
+        addressCountry: normalizeShippingCountry(
+          r.address_country || r.shipping_country,
+        ),
+        shippingCountry: normalizeShippingCountry(r.shipping_country),
       },
     });
   } catch (error) {
@@ -4977,22 +5079,28 @@ const handleAdminGetSubscriptions: RequestHandler = async (req, res) => {
     const [rows] = await pool.query<any[]>(
       `SELECT
          s.id, s.user_id, s.plan_id, s.grind_type_id,
-         s.stripe_subscription_id, s.status,
+         s.stripe_subscription_id, s.status, s.shipping_country,
          s.current_period_start, s.current_period_end,
          s.cancel_at_period_end, s.cancelled_at, s.notes,
          s.created_at,
          u.email AS user_email, u.full_name AS user_full_name,
-         sp.name AS plan_name, sp.weight AS plan_weight, sp.price_mxn AS plan_price,
+         sp.name AS plan_name, sp.weight AS plan_weight,
+         CASE
+           WHEN s.shipping_country = 'US'
+             THEN COALESCE(sp.price_mxn_us, sp.price_mxn)
+           ELSE sp.price_mxn
+         END AS plan_price,
          gt.name AS grind_type_name,
          a.street_address AS shipping_address,
          a.city AS shipping_city,
-         ms.name AS shipping_state
+         COALESCE(ms.name, us.name) AS shipping_state,
+         a.country AS address_country
        FROM subscriptions s
        JOIN users u ON s.user_id = u.id
        JOIN subscription_plans sp ON s.plan_id = sp.id
        JOIN grind_types gt ON s.grind_type_id = gt.id
        LEFT JOIN addresses a ON s.shipping_address_id = a.id
-       LEFT JOIN mexico_states ms ON a.state_id = ms.id
+       ${ADDRESS_STATE_JOINS}
        ORDER BY s.created_at DESC
        LIMIT 500`,
     );
@@ -5009,6 +5117,7 @@ const handleAdminGetSubscriptions: RequestHandler = async (req, res) => {
       grindTypeName: r.grind_type_name,
       status: r.status,
       stripeSubscriptionId: r.stripe_subscription_id,
+      shippingCountry: normalizeShippingCountry(r.shipping_country),
       currentPeriodStart: r.current_period_start,
       currentPeriodEnd: r.current_period_end,
       cancelAtPeriodEnd: !!r.cancel_at_period_end,

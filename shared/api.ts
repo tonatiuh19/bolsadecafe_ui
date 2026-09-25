@@ -275,6 +275,7 @@ export interface UserSubscriptionDetail {
   cancelAtPeriodEnd: boolean;
   cancelledAt?: string;
   createdAt: string;
+  shippingCountry?: "MX" | "US";
   shippingAddress?: {
     id: number;
     fullName: string;
@@ -284,7 +285,9 @@ export interface UserSubscriptionDetail {
     deliveryInstructions?: string;
     city: string;
     state: string;
-    stateId: number;
+    stateId: number | null;
+    stateCode?: string | null;
+    country?: "MX" | "US";
     postalCode: string;
     phone?: string;
   };
@@ -303,7 +306,9 @@ export interface UpdateAddressRequest {
   apartmentNumber?: string;
   deliveryInstructions?: string;
   city: string;
-  stateId: number;
+  stateId?: number | null;
+  stateCode?: string | null;
+  country?: "MX" | "US";
   postalCode: string;
   phone?: string;
 }
@@ -377,7 +382,8 @@ export interface CreateSubscriptionRequest {
     apartment_number?: string | null;
     delivery_instructions?: string | null;
     city: string;
-    state_id: number;
+    state_id?: number | null;
+    state_code?: string | null;
     postal_code: string;
     country?: string;
     phone?: string | null;
@@ -508,6 +514,8 @@ export interface AdminOrder {
   addressState?: string;
   addressPostalCode?: string;
   addressPhone?: string;
+  addressCountry?: "MX" | "US";
+  shippingCountry?: "MX" | "US";
   // Subscription
   subscriptionId?: number;
   // Coffee catalog
@@ -783,6 +791,7 @@ export interface AdminSubscription {
   cancelledAt?: string;
   notes?: string;
   createdAt: string;
+  shippingCountry?: "MX" | "US";
   shippingCity?: string;
   shippingState?: string;
   shippingAddress?: string;

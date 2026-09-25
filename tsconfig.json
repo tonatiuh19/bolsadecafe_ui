@@ -25,6 +25,8 @@
     "noFallthroughCasesInSwitch": false,
     "strictNullChecks": false,
 
+    "resolveJsonModule": true,
+
     /* Path mapping */
     "baseUrl": ".",
     "paths": {

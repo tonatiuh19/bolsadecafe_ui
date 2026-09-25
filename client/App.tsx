@@ -1,5 +1,6 @@
 import React from "react";
 import "./global.css";
+import "./i18n";
 
 import { Toaster } from "@/components/ui/toaster";
 import { createRoot } from "react-dom/client";
@@ -29,8 +30,12 @@ import AdminBlog from "./pages/admin/AdminBlog";
 import AdminBlogEditor from "./pages/admin/AdminBlogEditor";
 import BlogList from "./pages/BlogList";
 import BlogPost from "./pages/BlogPost";
+import SiteClosing from "./pages/SiteClosing";
 
 const queryClient = new QueryClient();
+
+/** Build-time flag: set VITE_SITE_CLOSING=true to show the farewell page. */
+const siteClosing = import.meta.env.VITE_SITE_CLOSING === "true";
 
 const App = () => (
   <HelmetProvider>
@@ -41,36 +46,45 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <Routes>
-              <Route path="/" element={<Index />} />
-              <Route
-                path="/subscription-wizard"
-                element={<SubscriptionWizard />}
-              />
-              <Route
-                path="/subscription/success"
-                element={<SubscriptionSuccess />}
-              />
-              <Route path="/terms" element={<TermsAndConditions />} />
-              <Route path="/privacy" element={<PrivacyPolicy />} />
-              <Route path="/ayuda" element={<HelpCenter />} />
-              {/* Admin panel */}
-              <Route path="/admin" element={<AdminLogin />} />
-              <Route path="/admin" element={<AdminLayout />}>
-                <Route path="dashboard" element={<AdminDashboard />} />
-                <Route path="subscriptions" element={<AdminSubscriptions />} />
-                <Route path="clients" element={<AdminClients />} />
-                <Route path="people" element={<AdminPeople />} />
-                <Route path="settings" element={<AdminSettings />} />
-                <Route path="coffee-catalog" element={<AdminCoffeeCatalog />} />
-                <Route path="blog" element={<AdminBlog />} />
-                <Route path="blog/new" element={<AdminBlogEditor />} />
-                <Route path="blog/:id/edit" element={<AdminBlogEditor />} />
-              </Route>
-              {/* Blog public routes */}
-              <Route path="/blog" element={<BlogList />} />
-              <Route path="/blog/:slug" element={<BlogPost />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
+              {siteClosing ? (
+                <Route path="*" element={<SiteClosing />} />
+              ) : (
+                <>
+                  <Route path="/" element={<Index />} />
+                  <Route
+                    path="/subscription-wizard"
+                    element={<SubscriptionWizard />}
+                  />
+                  <Route
+                    path="/subscription/success"
+                    element={<SubscriptionSuccess />}
+                  />
+                  <Route path="/terms" element={<TermsAndConditions />} />
+                  <Route path="/privacy" element={<PrivacyPolicy />} />
+                  <Route path="/ayuda" element={<HelpCenter />} />
+                  <Route path="/admin" element={<AdminLogin />} />
+                  <Route path="/admin" element={<AdminLayout />}>
+                    <Route path="dashboard" element={<AdminDashboard />} />
+                    <Route
+                      path="subscriptions"
+                      element={<AdminSubscriptions />}
+                    />
+                    <Route path="clients" element={<AdminClients />} />
+                    <Route path="people" element={<AdminPeople />} />
+                    <Route path="settings" element={<AdminSettings />} />
+                    <Route
+                      path="coffee-catalog"
+                      element={<AdminCoffeeCatalog />}
+                    />
+                    <Route path="blog" element={<AdminBlog />} />
+                    <Route path="blog/new" element={<AdminBlogEditor />} />
+                    <Route path="blog/:id/edit" element={<AdminBlogEditor />} />
+                  </Route>
+                  <Route path="/blog" element={<BlogList />} />
+                  <Route path="/blog/:slug" element={<BlogPost />} />
+                  <Route path="*" element={<NotFound />} />
+                </>
+              )}
             </Routes>
           </BrowserRouter>
         </TooltipProvider>

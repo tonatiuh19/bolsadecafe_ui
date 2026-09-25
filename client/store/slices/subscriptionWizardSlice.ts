@@ -1,11 +1,13 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import type { RootState } from "../store";
+import type { ShippingCountry } from "@shared/pricing";
 
 interface SubscriptionPlan {
   id: string;
   name: string;
   weight: string;
   price: number;
+  priceUs?: number;
   description: string;
   features: string[];
   popular?: boolean;
@@ -17,6 +19,7 @@ interface SubscriptionPlan {
 
 interface WizardData {
   grind: string;
+  shippingCountry: ShippingCountry | "";
   fullName: string;
   streetAddress: string;
   streetAddress2: string;
@@ -24,6 +27,7 @@ interface WizardData {
   deliveryInstructions: string;
   city: string;
   stateId: string;
+  stateCode: string;
   postalCode: string;
   phone: string;
   recipientType: "self" | "other" | "";
@@ -39,6 +43,7 @@ interface SubscriptionWizardState {
 const initialState: SubscriptionWizardState = {
   wizardData: {
     grind: "",
+    shippingCountry: "",
     fullName: "",
     streetAddress: "",
     streetAddress2: "",
@@ -46,6 +51,7 @@ const initialState: SubscriptionWizardState = {
     deliveryInstructions: "",
     city: "",
     stateId: "",
+    stateCode: "",
     postalCode: "",
     phone: "",
     recipientType: "",
@@ -74,7 +80,6 @@ export const subscriptionWizardSlice = createSlice({
 export const { updateWizardData, resetWizardData, setWizardData } =
   subscriptionWizardSlice.actions;
 
-// Selectors
 export const selectWizardData = (state: RootState) =>
   state.subscriptionWizard.wizardData;
 
